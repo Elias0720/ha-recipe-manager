@@ -1,0 +1,17 @@
+name: Get HA Recipe Manager
+version: "0.1.0"
+slug: get_ha_recipe_manager
+description: Installiert oder aktualisiert HA Recipe Manager in Home Assistant
+url: https://github.com/Elias0720/ha-recipe-manager/tree/main/get_ha_recipe_manager
+startup: once
+boot: manual
+arch:
+  - aarch64
+  - amd64
+init: false
+map:
+  - type: homeassistant_config
+    read_only: false
+    path: /homeassistant
+options: {}
+schema: {}

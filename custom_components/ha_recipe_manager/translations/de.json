@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Recipe Manager",
+        "description": "Richtet das Rezept-Panel und den Rezept-Speicher ein."
+      }
+    },
+    "abort": {
+      "already_configured": "HA Recipe Manager ist bereits eingerichtet.",
+      "single_instance_allowed": "Es ist nur eine HA-Recipe-Manager-Instanz erlaubt."
+    }
+  },
+  "services": {
+    "add_missing_to_shopping_list": {
+      "name": "Fehlende Zutaten zur Einkaufsliste hinzufügen",
+      "description": "Fügt alle nicht abgehakten Zutaten eines Rezepts zur Home-Assistant-Einkaufsliste hinzu.",
+      "fields": {
+        "recipe_id": {
+          "name": "Rezept-ID",
+          "description": "Das Rezept, dessen nicht abgehakte Zutaten hinzugefügt werden."
+        },
+        "checked_ingredient_ids": {
+          "name": "Abgehakte Zutaten-IDs",
+          "description": "Zutaten-IDs, die bereits zuhause vorhanden sind."
+        }
+      }
+    }
+  }
+}

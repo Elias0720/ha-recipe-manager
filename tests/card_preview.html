@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recipe Guide Card Preview</title>
+    <style>
+      :root {
+        --primary-text-color: #1f2933;
+        --secondary-text-color: #64707d;
+        --card-background-color: #fff;
+        --divider-color: #d9dee4;
+      }
+
+      body {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 24px;
+        background: #eef2f5;
+        font-family: Arial, sans-serif;
+      }
+
+      ha-card {
+        display: block;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      ha-recipe-guide-card {
+        display: block;
+        max-width: 620px;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <ha-recipe-guide-card></ha-recipe-guide-card>
+    <script type="module">
+      import "/custom_components/ha_recipe_manager/frontend/recipe-guide-card.js";
+
+      const recipes = [
+        {
+          id: "pasta-tomate",
+          name: "Pasta mit Tomatensauce",
+          servings: "4",
+          tags: ["Schnell", "Vegetarisch"],
+          ingredients: [
+            { id: "pasta", quantity: "500", unit: "g", name: "Spaghetti", note: "" },
+            { id: "tomatoes", quantity: "2", unit: "Dosen", name: "Tomaten", note: "stückig" },
+            { id: "garlic", quantity: "2", unit: "Zehen", name: "Knoblauch", note: "" }
+          ],
+          instructions: "1. Wasser aufkochen und die Pasta garen.\n2. Knoblauch anschwitzen, Tomaten zugeben und köcheln lassen.\n3. Pasta mit Sauce servieren."
+        },
+        {
+          id: "curry",
+          name: "Gemüsecurry",
+          servings: "3",
+          tags: ["Vegan"],
+          ingredients: [
+            { id: "chickpeas", quantity: "1", unit: "Dose", name: "Kichererbsen", note: "" }
+          ],
+          instructions: "Gemüse anbraten und mit Kokosmilch köcheln."
+        }
+      ];
+
+      const connection = {
+        async sendMessagePromise() {
+          return { recipes };
+        },
+        async subscribeEvents() {
+          return () => undefined;
+        }
+      };
+
+      const card = document.querySelector("ha-recipe-guide-card");
+      card.setConfig({ title: "Küchenrezept", show_ingredients: true });
+      card.hass = { connection };
+    </script>
+  </body>
+</html>

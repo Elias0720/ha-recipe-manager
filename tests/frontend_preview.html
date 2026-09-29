@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HA Recipe Manager Preview</title>
+    <style>
+      :root {
+        --primary-color: #2f7d5b;
+        --primary-text-color: #1f2933;
+        --secondary-text-color: #64707d;
+        --primary-background-color: #f7f8fa;
+        --secondary-background-color: #eef2f5;
+        --card-background-color: #fff;
+        --divider-color: #d9dee4;
+        --error-color: #b3261e;
+        --text-primary-color: #fff;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+      }
+
+      ha-icon {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid currentColor;
+        border-radius: 4px;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <ha-recipe-manager-panel></ha-recipe-manager-panel>
+    <script type="module">
+      import "/custom_components/ha_recipe_manager/frontend/ha-recipe-manager-panel.js";
+
+      const recipes = [
+        {
+          id: "pasta-tomate",
+          name: "Pasta mit Tomatensauce",
+          servings: "4",
+          source_url: "https://example.com/pasta",
+          tags: ["Schnell", "Vegetarisch"],
+          ingredients: [
+            { id: "pasta", quantity: "500", unit: "g", name: "Spaghetti", note: "" },
+            { id: "tomatoes", quantity: "2", unit: "Dosen", name: "Tomaten", note: "stückig" },
+            { id: "garlic", quantity: "2", unit: "Zehen", name: "Knoblauch", note: "" },
+            { id: "basil", quantity: "1", unit: "Bund", name: "Basilikum", note: "frisch" }
+          ],
+          instructions: "1. Wasser aufkochen und die Pasta garen.\n2. Knoblauch anschwitzen, Tomaten zugeben und köcheln lassen.\n3. Pasta mit Sauce und Basilikum servieren."
+        },
+        {
+          id: "curry",
+          name: "Gemüsecurry",
+          servings: "3",
+          source_url: "",
+          tags: ["Vegan"],
+          ingredients: [
+            { id: "chickpeas", quantity: "1", unit: "Dose", name: "Kichererbsen", note: "" },
+            { id: "coconut", quantity: "400", unit: "ml", name: "Kokosmilch", note: "" }
+          ],
+          instructions: "Gemüse anbraten, Gewürze dazugeben und mit Kokosmilch köcheln."
+        },
+        {
+          id: "soup",
+          name: "Kartoffelsuppe",
+          servings: "4",
+          source_url: "",
+          tags: ["Hausmannskost"],
+          ingredients: [
+            { id: "potatoes", quantity: "800", unit: "g", name: "Kartoffeln", note: "mehlig" }
+          ],
+          instructions: "Kartoffeln weich kochen und die Suppe fein pürieren."
+        }
+      ];
+
+      const listeners = [];
+      const connection = {
+        async sendMessagePromise(message) {
+          if (message.type.endsWith("/list")) {
+            return { recipes };
+          }
+          if (message.type.endsWith("/add_to_shopping_list")) {
+            return {
+              count: recipes
+                .find((recipe) => recipe.id === message.recipe_id)
+                .ingredients.filter((ingredient) => !message.checked_ingredient_ids.includes(ingredient.id))
+                .length
+            };
+          }
+          return {};
+        },
+        async subscribeEvents(callback, eventType) {
+          listeners.push({ callback, eventType });
+          return () => undefined;
+        }
+      };
+
+      document.querySelector("ha-recipe-manager-panel").hass = { connection };
+    </script>
+  </body>
+</html>

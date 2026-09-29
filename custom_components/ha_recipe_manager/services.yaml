@@ -1,0 +1,12 @@
+add_missing_to_shopping_list:
+  fields:
+    recipe_id:
+      required: true
+      example: "a1b2c3"
+      selector:
+        text:
+    checked_ingredient_ids:
+      required: false
+      example: ["ingredient-id-1", "ingredient-id-2"]
+      selector:
+        object:

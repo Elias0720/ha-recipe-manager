@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Recipe Manager",
+        "description": "Set up the recipe manager panel and recipe storage."
+      }
+    },
+    "abort": {
+      "already_configured": "HA Recipe Manager is already configured.",
+      "single_instance_allowed": "Only one HA Recipe Manager instance is allowed."
+    }
+  },
+  "services": {
+    "add_missing_to_shopping_list": {
+      "name": "Add missing ingredients to shopping list",
+      "description": "Adds all unchecked ingredients of a recipe to the Home Assistant shopping list.",
+      "fields": {
+        "recipe_id": {
+          "name": "Recipe ID",
+          "description": "The recipe whose unchecked ingredients should be added."
+        },
+        "checked_ingredient_ids": {
+          "name": "Checked ingredient IDs",
+          "description": "Ingredient IDs that are already available at home."
+        }
+      }
+    }
+  }
+}
