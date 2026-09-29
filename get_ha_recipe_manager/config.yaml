@@ -1,5 +1,5 @@
 name: Get HA Recipe Manager
-version: "0.1.1"
+version: "0.1.2"
 slug: get_ha_recipe_manager
 description: Installiert oder aktualisiert HA Recipe Manager in Home Assistant
 url: https://github.com/Elias0720/ha-recipe-manager/tree/main/get_ha_recipe_manager

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Verify installer payload
         run: |
           cd get_ha_recipe_manager
@@ -29,7 +29,7 @@ jobs:
       - name: Build installer image
         run: >-
           docker build
-          --build-arg BUILD_VERSION=0.1.1
+          --build-arg BUILD_VERSION=0.1.2
           --build-arg BUILD_ARCH=amd64
           get_ha_recipe_manager
 
@@ -45,6 +45,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master

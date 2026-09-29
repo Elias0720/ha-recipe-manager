@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Hassfest-Abhaengigkeiten und Config-Entry-Schema korrigiert
+- HACS-Brand-Icon in die Integration aufgenommen
+
 ## 0.1.1
 
 - BusyBox-kompatible SHA-256-Pruefung im Installer
