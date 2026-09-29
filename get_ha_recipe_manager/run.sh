@@ -36,7 +36,7 @@ bashio::log.info "Pruefe Installationspaket..."
 bashio::fs.directory_exists "${CONFIG_ROOT}" \
     || bashio::exit.nok "Das Home-Assistant-Konfigurationsverzeichnis ist nicht eingebunden."
 
-(cd /opt && sha256sum --check "$(basename "${CHECKSUM}")")
+(cd /opt && sha256sum -c "$(basename "${CHECKSUM}")")
 
 mkdir -p "${COMPONENTS_ROOT}"
 
