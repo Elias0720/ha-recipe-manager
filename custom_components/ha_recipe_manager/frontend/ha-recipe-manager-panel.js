@@ -12,6 +12,7 @@ const emptyRecipe = () => ({
   id: "",
   name: "",
   servings: "",
+  duration_minutes: null,
   source_url: "",
   tags: [],
   ingredients: [emptyIngredient()],
@@ -27,6 +28,7 @@ const escapeHtml = (value) =>
     .replaceAll("'", "&#39;");
 
 const cloneRecipe = (recipe) => JSON.parse(JSON.stringify(recipe || emptyRecipe()));
+const durationLabel = (recipe) => recipe.duration_minutes ? `ca. ${recipe.duration_minutes} Min.` : "";
 
 const ingredientLabel = (ingredient) => {
   const prefix = [ingredient.quantity, ingredient.unit].filter(Boolean).join(" ");
@@ -54,6 +56,14 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._selectedId = undefined;
     this._checked = new Set();
     this._view = "prep";
+    this._tab = "recipes";
+    this._rankings = { taste: [], effort: [] };
+    this._rankingDirty = new Set();
+    this._rankingSaving = false;
+    this._rankingError = "";
+    this._rankingErrorKind = undefined;
+    this._rankingStatus = "";
+    this._rankingDrag = undefined;
     this._query = "";
     this._message = "";
     this._error = "";
@@ -65,6 +75,20 @@ class HaRecipeManagerPanel extends HTMLElement {
     this.shadowRoot.addEventListener("click", (event) => this._handleClick(event));
     this.shadowRoot.addEventListener("input", (event) => this._handleInput(event));
     this.shadowRoot.addEventListener("change", (event) => this._handleChange(event));
+    this.shadowRoot.addEventListener("pointerdown", (event) => this._startRankingDrag(event));
+    this.shadowRoot.addEventListener("pointermove", (event) => {
+      if (this._rankingDrag?.pointerId === event.pointerId) {
+        this._rankingDrag.x = event.clientX;
+        this._rankingDrag.y = event.clientY;
+      }
+    });
+    this.shadowRoot.addEventListener("pointerup", (event) => {
+      if (this._rankingDrag?.pointerId === event.pointerId) this._finishRankingDrag();
+    });
+    for (const type of ["pointercancel", "lostpointercapture"]) {
+      this.shadowRoot.addEventListener(type, () => this._finishRankingDrag(true));
+    }
+    this.shadowRoot.addEventListener("keydown", (event) => this._handleRankingKey(event));
   }
 
   set hass(hass) {
@@ -85,6 +109,7 @@ class HaRecipeManagerPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._finishRankingDrag(true);
     this._unsubscribeRecipes?.();
     this._unsubscribeRecipes = undefined;
   }
@@ -100,6 +125,10 @@ class HaRecipeManagerPanel extends HTMLElement {
     if (!this._hass || this._loading) {
       return;
     }
+    if (this._rankingDrag) {
+      this._refreshAfterDrag = true;
+      return;
+    }
     this._loading = true;
     this._error = "";
     this._render({ updateEditor: false });
@@ -107,6 +136,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     try {
       const response = await this._api("list");
       this._recipes = response.recipes || [];
+      this._syncRankings(response.rankings);
       this._loaded = true;
       if (!this._selectedRecipe() && this._recipes.length > 0) {
         this._selectRecipe(this._recipes[0].id);
@@ -151,6 +181,147 @@ class HaRecipeManagerPanel extends HTMLElement {
     return this._recipes.find((recipe) => recipe.id === this._selectedId);
   }
 
+  _syncRankings(rankings = this._rankings) {
+    const ids = this._recipes.map((recipe) => recipe.id);
+    for (const kind of ["taste", "effort"]) {
+      const order = this._rankingDirty.has(kind) ? this._rankings[kind] : rankings?.[kind] || [];
+      this._rankings[kind] = [...new Set([...order, ...ids])].filter((id) => ids.includes(id));
+    }
+  }
+
+  async _saveRanking(kind) {
+    if (this._rankingSaving) return;
+    this._rankingSaving = true;
+    this._rankingError = "";
+    this._rankingStatus = "Reihenfolge wird gespeichert …";
+    this._render({ updateEditor: false });
+    try {
+      const response = await this._api("save_ranking", { kind, recipe_ids: [...this._rankings[kind]] });
+      this._rankingDirty.delete(kind);
+      this._syncRankings(response.rankings);
+      this._rankingErrorKind = [...this._rankingDirty][0];
+      this._rankingStatus = this._rankingErrorKind ? "Eine Reihenfolge ist noch nicht gespeichert." : "Reihenfolge gespeichert.";
+      this._rankingError = this._rankingErrorKind
+        ? `Die Reihenfolge für ${this._rankingErrorKind === "taste" ? "Geschmack" : "Kochaufwand"} ist noch nicht gespeichert.` : "";
+    } catch (err) {
+      this._rankingError = err?.code === "invalid_ranking"
+        ? "Die Rezeptliste wurde geändert. Lade die Rezepte neu und versuche es erneut."
+        : err?.message || "Reihenfolge konnte nicht gespeichert werden.";
+      this._rankingErrorKind = kind;
+      this._rankingStatus = "Die Reihenfolge ist noch nicht gespeichert.";
+      if (err?.code === "invalid_ranking") await this._loadRecipes();
+    } finally {
+      this._rankingSaving = false;
+      this._render({ updateEditor: false });
+      if (this._rankingFocus) {
+        const { kind: focusKind, id: focusId } = this._rankingFocus;
+        this._rankingFocus = undefined;
+        this.shadowRoot.querySelector(`[data-action="drag-ranking"][data-kind="${focusKind}"][data-id="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  _moveRanking(kind, id, to) {
+    if (this._rankingSaving || !this._rankings[kind]) return;
+    const order = [...this._rankings[kind]];
+    const from = order.indexOf(id);
+    to = Math.max(0, Math.min(to, order.length - 1));
+    if (from < 0 || from === to) return;
+    order.splice(from, 1);
+    order.splice(to, 0, id);
+    this._rankings[kind] = order;
+    this._rankingDirty.add(kind);
+    this._rankingFocus = { kind, id };
+    this._saveRanking(kind);
+  }
+
+  _startRankingDrag(event) {
+    const handle = event.target.closest('[data-action="drag-ranking"]');
+    if (!handle || this._rankingSaving || event.button !== 0 || !event.isPrimary) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    this._rankingDrag = {
+      kind: handle.dataset.kind, id: handle.dataset.id, handle, pointerId: event.pointerId,
+      x: event.clientX, y: event.clientY,
+    };
+    handle.closest(".ranking-item").classList.add("dragging");
+    const track = () => {
+      const drag = this._rankingDrag;
+      if (!drag) return;
+      const list = drag.handle.closest(".ranking-list");
+      const bounds = list.getBoundingClientRect();
+      const inside = drag.x >= bounds.left && drag.x <= bounds.right && drag.y >= bounds.top && drag.y <= bounds.bottom;
+      list.querySelectorAll(".drop-before, .drop-after").forEach((row) => row.classList.remove("drop-before", "drop-after"));
+      drag.targetId = undefined;
+      if (inside) {
+        if (drag.y < bounds.top + 32) list.scrollTop -= 10;
+        if (drag.y > bounds.bottom - 32) list.scrollTop += 10;
+        const row = this.shadowRoot.elementFromPoint(drag.x, drag.y)?.closest(".ranking-item");
+        if (row?.dataset.kind === drag.kind) {
+          drag.targetId = row.dataset.id;
+          const rowBounds = row.getBoundingClientRect();
+          drag.after = drag.y > rowBounds.top + rowBounds.height / 2;
+          if (row.dataset.id !== drag.id) row.classList.add(drag.after ? "drop-after" : "drop-before");
+        }
+      }
+      this._rankingDragFrame = requestAnimationFrame(track);
+    };
+    this._rankingDragFrame = requestAnimationFrame(track);
+  }
+
+  _finishRankingDrag(cancel = false) {
+    const drag = this._rankingDrag;
+    if (!drag) return;
+    this._rankingDrag = undefined;
+    cancelAnimationFrame(this._rankingDragFrame);
+    if (drag.handle.hasPointerCapture(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
+    this.shadowRoot.querySelectorAll(".dragging, .drop-before, .drop-after").forEach((row) => {
+      row.classList.remove("dragging", "drop-before", "drop-after");
+    });
+    if (!cancel && drag.targetId && drag.targetId !== drag.id) {
+      const without = this._rankings[drag.kind].filter((id) => id !== drag.id);
+      const target = without.indexOf(drag.targetId);
+      if (target >= 0) this._moveRanking(drag.kind, drag.id, target + (drag.after ? 1 : 0));
+    }
+    if (!this._rankingSaving) this._render({ updateEditor: false });
+    if (this._refreshAfterDrag) {
+      this._refreshAfterDrag = false;
+      this._loadRecipes();
+    }
+  }
+
+  _handleRankingKey(event) {
+    const handle = event.target.closest('[data-action="drag-ranking"]');
+    if (handle && ["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const { kind, id } = handle.dataset;
+      const order = this._rankings[kind];
+      const to = event.key === "Home" ? 0 : event.key === "End" ? order.length - 1
+        : order.indexOf(id) + (event.key === "ArrowUp" ? -1 : 1);
+      this._moveRanking(kind, id, to);
+    }
+    const point = event.target.closest(".chart-point");
+    if (point && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      this._selectRecipe(point.dataset.id);
+      this._tab = "recipes";
+      this._render();
+    }
+  }
+
+  _rankingChartData() {
+    const byId = new Map(this._recipes.map((recipe) => [recipe.id, recipe]));
+    const points = this._rankings.taste.map((id, index) => ({
+      recipe: byId.get(id), taste: index + 1, effort: this._rankings.effort.indexOf(id) + 1,
+    })).filter((point) => point.recipe && point.effort > 0);
+    if (points.length < 2) return { points, trend: null };
+    const meanX = points.reduce((sum, point) => sum + point.effort, 0) / points.length;
+    const meanY = points.reduce((sum, point) => sum + point.taste, 0) / points.length;
+    const variance = points.reduce((sum, point) => sum + (point.effort - meanX) ** 2, 0);
+    const slope = points.reduce((sum, point) => sum + (point.effort - meanX) * (point.taste - meanY), 0) / variance;
+    return { points, trend: { slope, intercept: meanY - slope * meanX } };
+  }
+
   _selectRecipe(recipeId) {
     this._selectedId = recipeId;
     this._checked = new Set();
@@ -186,7 +357,7 @@ class HaRecipeManagerPanel extends HTMLElement {
             <ha-icon icon="mdi:silverware-fork-knife"></ha-icon>
             <span class="recipe-title">
               <strong>${escapeHtml(item.name)}</strong><br>
-              <span class="muted">${item.ingredients.length} Zutaten</span>
+              <span class="muted">${item.ingredients.length} Zutaten${item.duration_minutes ? ` · ${escapeHtml(durationLabel(item))}` : ""}</span>
             </span>
           </button>`
       )
@@ -209,6 +380,11 @@ class HaRecipeManagerPanel extends HTMLElement {
       this._render();
       return;
     }
+    if (recipe.duration_minutes !== null && (!/^\d+$/.test(String(recipe.duration_minutes)) || Number(recipe.duration_minutes) < 1)) {
+      this._editorError = "Bitte gib den Zeitaufwand in ganzen Minuten größer als 0 ein.";
+      this._render();
+      return;
+    }
 
     try {
       const response = await this._api("save", { recipe });
@@ -217,6 +393,7 @@ class HaRecipeManagerPanel extends HTMLElement {
         (a, b) => a.name.localeCompare(b.name)
       );
       this._selectedId = saved.id;
+      this._syncRankings();
       this._draft = undefined;
       this._editorError = "";
       this._message = "Rezept gespeichert.";
@@ -236,6 +413,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     try {
       await this._api("delete", { recipe_id: recipe.id });
       this._recipes = this._recipes.filter((item) => item.id !== recipe.id);
+      this._syncRankings();
       this._selectedId = this._recipes[0]?.id;
       this._checked = new Set();
       this._message = "Rezept gelöscht.";
@@ -310,6 +488,7 @@ class HaRecipeManagerPanel extends HTMLElement {
       ...this._draft,
       name: value("#edit-name"),
       servings: value("#edit-servings"),
+      duration_minutes: value("#edit-duration") || null,
       source_url: value("#edit-source"),
       tags: value("#edit-tags")
         .split(",")
@@ -335,7 +514,32 @@ class HaRecipeManagerPanel extends HTMLElement {
 
     const action = target.dataset.action;
 
+    if (action === "tab") {
+      this._tab = target.dataset.tab;
+      this._render();
+      return;
+    }
+
+    if (action === "move-ranking") {
+      const { kind, id, direction } = target.dataset;
+      this._moveRanking(kind, id, this._rankings[kind].indexOf(id) + Number(direction));
+      return;
+    }
+
+    if (action === "retry-ranking") {
+      this._saveRanking(this._rankingErrorKind);
+      return;
+    }
+
+    if (action === "open-ranked-recipe") {
+      this._selectRecipe(target.dataset.id);
+      this._tab = "recipes";
+      this._render();
+      return;
+    }
+
     if (action === "select") {
+      this._tab = "recipes";
       this._selectRecipe(target.dataset.id);
       this._render();
       return;
@@ -432,6 +636,7 @@ class HaRecipeManagerPanel extends HTMLElement {
   }
 
   _render({ updateEditor = true } = {}) {
+    if (this._rankingDrag) return;
     const recipe = this._selectedRecipe();
 
     const content = `
@@ -658,8 +863,92 @@ class HaRecipeManagerPanel extends HTMLElement {
           box-shadow: inset 0 -3px 0 var(--primary-color, #2f7d5b);
         }
 
+        .app-tabs {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+        }
+
+        .app-tabs .active {
+          background: var(--recipe-selection-background);
+          border-color: var(--primary-color, #2f7d5b);
+        }
+
+        .ranking-columns {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+        }
+
+        .ranking-columns .section {
+          min-width: 0;
+        }
+
+        .ranking-list {
+          list-style: none;
+          margin: 0;
+          padding: 4px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          max-height: 440px;
+          overflow: auto;
+          overscroll-behavior: contain;
+        }
+
+        .ranking-item {
+          position: relative;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          padding: 8px;
+          min-height: 64px;
+          border: 1px solid var(--divider-color, #d9dee4);
+          border-radius: 8px;
+          background: var(--card-background-color, #fff);
+        }
+
+        .ranking-item.dragging {
+          background: var(--recipe-selection-background);
+          border-color: var(--primary-color, #2f7d5b);
+        }
+
+        .ranking-item.drop-before::before,
+        .ranking-item.drop-after::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: var(--primary-color, #2f7d5b);
+        }
+
+        .ranking-item.drop-before::before { top: -6px; }
+        .ranking-item.drop-after::after { bottom: -6px; }
+        .rank-number { min-width: 20px; text-align: center; font-weight: 600; }
+        .rank-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+        .rank-name strong, .rank-name .muted { display: block; }
+        .rank-controls { display: flex; gap: 4px; }
+        .rank-controls button, .rank-drag-handle { width: 34px; padding: 0; flex-shrink: 0; }
+        .rank-drag-handle { cursor: grab; touch-action: none; user-select: none; font-size: 22px; }
+        .dragging .rank-drag-handle { cursor: grabbing; }
+        .ranking-status { min-height: 20px; }
+        .ranking-chart { width: 100%; height: auto; display: block; }
+        .plot-grid { stroke: var(--divider-color, #d9dee4); stroke-width: 1; }
+        .plot-label { fill: var(--primary-text-color, #1f2933); font-size: 13px; }
+        .plot-name { font-size: 12px; }
+        .plot-trend { stroke: var(--primary-text-color, #1f2933); stroke-width: 2; stroke-dasharray: 7 5; }
+        .plot-dot { fill: #2f7d5b; stroke: var(--primary-text-color, #1f2933); stroke-width: 2; }
+        .chart-point { cursor: pointer; outline: none; }
+        .chart-point:hover .plot-dot, .chart-point:focus-visible .plot-dot { r: 9; stroke-width: 3; }
+        .ranking-table-wrap { overflow: auto; }
+        .ranking-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .ranking-table th, .ranking-table td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--divider-color, #d9dee4); }
+        details summary { cursor: pointer; padding: 8px 0; }
+
         .recipe-button.active:hover,
-        .segment .active:hover {
+        .segment .active:hover,
+        .app-tabs .active:hover {
           background: color-mix(in srgb, var(--primary-color, #2f7d5b) 24%, var(--card-background-color, #fff));
         }
 
@@ -771,6 +1060,10 @@ class HaRecipeManagerPanel extends HTMLElement {
           gap: 12px;
         }
 
+        .recipe-basics {
+          grid-template-columns: minmax(0, 1fr) 120px 180px;
+        }
+
         .field {
           display: flex;
           flex-direction: column;
@@ -830,6 +1123,8 @@ class HaRecipeManagerPanel extends HTMLElement {
 
           .stats,
           .form-grid,
+          .ranking-columns,
+          .recipe-basics,
           .ingredient-row {
             grid-template-columns: 1fr;
           }
@@ -837,6 +1132,10 @@ class HaRecipeManagerPanel extends HTMLElement {
           .ingredient-row button {
             width: 44px;
           }
+        }
+        @media (max-width: 520px) {
+          .plot-label { font-size: 26px; }
+          .plot-name { font-size: 22px; }
         }
       </style>
       <div class="shell">
@@ -847,6 +1146,10 @@ class HaRecipeManagerPanel extends HTMLElement {
               <ha-icon icon="mdi:plus"></ha-icon>
             </button>
           </div>
+          <nav class="app-tabs" aria-label="Rezeptbereiche">
+            <button class="${this._tab === "recipes" ? "active" : ""}" data-action="tab" data-tab="recipes" aria-pressed="${this._tab === "recipes"}">Rezepte</button>
+            <button class="${this._tab === "rankings" ? "active" : ""}" data-action="tab" data-tab="rankings" aria-pressed="${this._tab === "rankings"}">Ranking</button>
+          </nav>
           <input class="search" data-action="search" value="${escapeHtml(
             this._query
           )}" placeholder="Suchen">
@@ -858,7 +1161,7 @@ class HaRecipeManagerPanel extends HTMLElement {
           ${this._loading ? `<div class="empty">Rezepte werden geladen ...</div>` : ""}
           ${this._error ? `<div class="notice error">${escapeHtml(this._error)}</div>` : ""}
           ${this._message ? `<div class="notice">${escapeHtml(this._message)}</div>` : ""}
-          ${recipe ? this._renderRecipe(recipe) : this._renderEmptyState()}
+          ${this._tab === "rankings" ? this._renderRankings() : recipe ? this._renderRecipe(recipe) : this._renderEmptyState()}
         </main>
       </div>
       ${this._draft ? this._renderEditor() : ""}
@@ -874,6 +1177,94 @@ class HaRecipeManagerPanel extends HTMLElement {
     } else {
       this.shadowRoot.innerHTML = content;
     }
+  }
+
+  _renderRankings() {
+    return `
+      <div class="panel">
+        <div class="title-row"><div>
+          <h2>Dein Rezept-Ranking</h2>
+          <p class="muted">Ziehe Rezepte am Griff nach oben oder unten. Beide Listen werden unabhängig gespeichert.</p>
+        </div></div>
+        <div class="ranking-status muted" role="status" aria-live="polite">${escapeHtml(this._rankingStatus)}</div>
+        ${this._rankingError ? `<div class="notice error">${escapeHtml(this._rankingError)} <button data-action="retry-ranking" ${this._rankingSaving ? "disabled" : ""}>Erneut speichern</button></div>` : ""}
+        <div class="ranking-columns">
+          ${this._renderRankingList("taste", "Geschmack", "Oben steht dein leckerstes Rezept.")}
+          ${this._renderRankingList("effort", "Kochaufwand", "Oben steht das Rezept mit dem geringsten Aufwand.")}
+        </div>
+        <div class="section">
+          <h3>Geschmack und Aufwand</h3>
+          <p class="muted">Oben links: guter Geschmack bei wenig Aufwand. Die Punkte verwenden deine Rangplätze, unabhängig von der Zeitangabe.</p>
+          ${this._renderRankingChart()}
+        </div>
+      </div>`;
+  }
+
+  _renderRankingList(kind, title, description) {
+    const byId = new Map(this._recipes.map((recipe) => [recipe.id, recipe]));
+    const order = this._rankings[kind];
+    const disabled = this._rankingSaving ? "disabled" : "";
+    return `<section class="section">
+      <h3>${title}</h3><p class="muted">${description}</p>
+      <ol class="ranking-list" data-kind="${kind}" aria-label="Ranking nach ${title}">
+        ${order.map((id, index) => {
+          const recipe = byId.get(id);
+          if (!recipe) return "";
+          const name = escapeHtml(recipe.name);
+          return `<li class="ranking-item" data-kind="${kind}" data-id="${escapeHtml(id)}">
+            <span class="rank-number">${index + 1}</span>
+            <button class="rank-drag-handle" data-action="drag-ranking" data-kind="${kind}" data-id="${escapeHtml(id)}" aria-label="${name} verschieben" title="Ziehen oder mit Pfeiltasten verschieben" ${disabled}><span aria-hidden="true">⠿</span></button>
+            <span class="rank-name"><strong>${name}</strong>${recipe.duration_minutes ? `<span class="muted">${escapeHtml(durationLabel(recipe))}</span>` : ""}</span>
+            <span class="rank-controls">
+              <button data-action="move-ranking" data-kind="${kind}" data-id="${escapeHtml(id)}" data-direction="-1" aria-label="${name} nach oben" title="Nach oben" ${disabled || index === 0 ? "disabled" : ""}>↑</button>
+              <button data-action="move-ranking" data-kind="${kind}" data-id="${escapeHtml(id)}" data-direction="1" aria-label="${name} nach unten" title="Nach unten" ${disabled || index === order.length - 1 ? "disabled" : ""}>↓</button>
+            </span>
+          </li>`;
+        }).join("")}
+      </ol>
+      ${order.length ? "" : `<p class="muted">Lege zuerst ein Rezept an.</p>`}
+    </section>`;
+  }
+
+  _renderRankingChart() {
+    const { points, trend } = this._rankingChartData();
+    const count = points.length;
+    if (!count) return `<div class="empty">Deine Rezepte erscheinen hier, sobald du welche angelegt hast.</div>`;
+    const left = 65, top = 35, width = 625, height = 290;
+    const x = (rank) => count === 1 ? left + width / 2 : left + (rank - 1) * width / (count - 1);
+    const y = (rank) => count === 1 ? top + height / 2 : top + (rank - 1) * height / (count - 1);
+    const ticks = [...new Set(Array.from({ length: Math.min(count, 6) }, (_, index) =>
+      count === 1 ? 1 : 1 + Math.round(index * (count - 1) / (Math.min(count, 6) - 1))))];
+    return `
+      <svg class="ranking-chart" viewBox="0 0 760 390" role="group" aria-label="Diagramm: Geschmack im Verhältnis zum Kochaufwand">
+        <title>Deine Rezepte nach Geschmack und Kochaufwand</title>
+        <desc>Geschmack Rang 1 liegt oben; Aufwand Rang 1 liegt links. Rezeptpunkte lassen sich öffnen. Die gestrichelte Linie ist der lineare Trend.</desc>
+        <defs><clipPath id="ranking-plot"><rect x="${left - 10}" y="${top - 10}" width="${width + 20}" height="${height + 20}"></rect></clipPath></defs>
+        ${ticks.map((rank) => `
+          <line class="plot-grid" x1="${x(rank)}" y1="${top}" x2="${x(rank)}" y2="${top + height}"></line>
+          <line class="plot-grid" x1="${left}" y1="${y(rank)}" x2="${left + width}" y2="${y(rank)}"></line>
+          <text class="plot-label" x="${x(rank)}" y="${top + height + 24}" text-anchor="middle">${rank}</text>
+          <text class="plot-label" x="${left - 14}" y="${y(rank) + 4}" text-anchor="end">${rank}</text>`).join("")}
+        <text class="plot-label" x="${left + width / 2}" y="378" text-anchor="middle">Aufwand (1 = am geringsten)</text>
+        <text class="plot-label" transform="translate(18, ${top + height / 2}) rotate(-90)" text-anchor="middle">Geschmack (1 = am besten)</text>
+        ${trend ? `<line class="plot-trend" clip-path="url(#ranking-plot)" x1="${x(1)}" y1="${y(trend.intercept + trend.slope)}" x2="${x(count)}" y2="${y(trend.intercept + trend.slope * count)}"></line>` : ""}
+        ${points.map((point) => {
+          const label = `${point.recipe.name}: Geschmack Rang ${point.taste}, Aufwand Rang ${point.effort}${point.recipe.duration_minutes ? `, ${durationLabel(point.recipe)}` : ""}`;
+          const rightSide = point.effort > count / 2;
+          const shortName = point.recipe.name.length > 22 ? `${point.recipe.name.slice(0, 21)}…` : point.recipe.name;
+          return `<g class="chart-point" role="button" tabindex="0" data-action="open-ranked-recipe" data-id="${escapeHtml(point.recipe.id)}" aria-label="${escapeHtml(label)}">
+            <title>${escapeHtml(label)}</title>
+            <circle class="plot-dot" cx="${x(point.effort)}" cy="${y(point.taste)}" r="7"></circle>
+            ${count <= 8 ? `<text class="plot-label plot-name" x="${x(point.effort) + (rightSide ? -12 : 12)}" y="${y(point.taste) - 12}" text-anchor="${rightSide ? "end" : "start"}">${escapeHtml(shortName)}</text>` : ""}
+          </g>`;
+        }).join("")}
+      </svg>
+      <p class="muted">${trend ? "Gestrichelte Linie: linearer Trend deiner Rangplätze. Klicke auf einen Punkt, um das Rezept zu öffnen." : "Ab zwei Rezepten wird eine Trendlinie angezeigt."}</p>
+      <details><summary>Alle Rezeptwerte</summary><div class="ranking-table-wrap">
+        <table class="ranking-table"><thead><tr><th scope="col">Rezept</th><th scope="col">Geschmacksrang</th><th scope="col">Aufwandsrang</th><th scope="col">Zeitaufwand</th></tr></thead>
+          <tbody>${points.map((point) => `<tr><td>${escapeHtml(point.recipe.name)}</td><td>${point.taste}</td><td>${point.effort}</td><td>${escapeHtml(durationLabel(point.recipe) || "–")}</td></tr>`).join("")}</tbody>
+        </table>
+      </div></details>`;
   }
 
   _renderEmptyState() {
@@ -900,6 +1291,7 @@ class HaRecipeManagerPanel extends HTMLElement {
             <h2>${escapeHtml(recipe.name)}</h2>
             <p class="muted">
               ${recipe.servings ? `${escapeHtml(recipe.servings)} Portionen · ` : ""}
+              ${recipe.duration_minutes ? `${escapeHtml(durationLabel(recipe))} · ` : ""}
               ${recipe.tags?.map((tag) => escapeHtml(tag)).join(", ") || "Ohne Kategorie"}
             </p>
           </div>
@@ -993,7 +1385,7 @@ class HaRecipeManagerPanel extends HTMLElement {
             <button data-action="close-editor" title="Schließen" aria-label="Editor schließen"><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           ${this._editorError ? `<div class="notice error">${escapeHtml(this._editorError)}</div>` : ""}
-          <div class="form-grid">
+          <div class="form-grid recipe-basics">
             <div class="field">
               <label for="edit-name">Name</label>
               <input id="edit-name" value="${escapeHtml(recipe.name)}" autocomplete="off">
@@ -1001,6 +1393,10 @@ class HaRecipeManagerPanel extends HTMLElement {
             <div class="field">
               <label for="edit-servings">Portionen</label>
               <input id="edit-servings" value="${escapeHtml(recipe.servings)}" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="edit-duration">Zeitaufwand (ca. Minuten)</label>
+              <input id="edit-duration" type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(recipe.duration_minutes ?? "")}" placeholder="z. B. 30">
             </div>
           </div>
           <div class="form-grid">

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from asyncio import Lock
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
-from .models import Recipe, normalize_recipe, sort_recipes
+from .models import RANKING_KINDS, Recipe, normalize_rankings, normalize_recipe, sort_recipes
 
 
 class RecipeStore:
@@ -18,6 +19,8 @@ class RecipeStore:
         """Initialize the recipe store."""
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._recipes: dict[str, Recipe] = {}
+        self._rankings: dict[str, list[str]] = {kind: [] for kind in RANKING_KINDS}
+        self._write_lock = Lock()
 
     async def async_load(self) -> None:
         """Load recipes from Home Assistant storage."""
@@ -32,6 +35,11 @@ class RecipeStore:
             except ValueError:
                 continue
             self._recipes[recipe["id"]] = recipe
+        self._rankings = normalize_rankings((data or {}).get("rankings"), self.list_recipes())
+
+    def get_rankings(self) -> dict[str, list[str]]:
+        """Return independent copies of the two recipe orders."""
+        return {kind: list(order) for kind, order in self._rankings.items()}
 
     def list_recipes(self) -> list[Recipe]:
         """Return all recipes."""
@@ -43,21 +51,38 @@ class RecipeStore:
 
     async def async_save_recipe(self, raw_recipe: dict[str, Any]) -> Recipe:
         """Create or update a recipe."""
-        existing = self._recipes.get(str(raw_recipe.get("id", "")))
-        recipe = normalize_recipe(raw_recipe, existing=existing)
-        self._recipes[recipe["id"]] = recipe
-        await self._async_save()
-        return recipe
+        async with self._write_lock:
+            existing = self._recipes.get(str(raw_recipe.get("id", "")))
+            recipe = normalize_recipe(raw_recipe, existing=existing)
+            recipes = {**self._recipes, recipe["id"]: recipe}
+            await self._async_save(recipes, self._rankings)
+            return recipe
 
     async def async_delete_recipe(self, recipe_id: str) -> bool:
         """Delete a recipe by id."""
-        if recipe_id not in self._recipes:
-            return False
+        async with self._write_lock:
+            if recipe_id not in self._recipes:
+                return False
+            recipes = {key: recipe for key, recipe in self._recipes.items() if key != recipe_id}
+            await self._async_save(recipes, self._rankings)
+            return True
 
-        del self._recipes[recipe_id]
-        await self._async_save()
-        return True
+    async def async_save_ranking(self, kind: str, recipe_ids: list[str]) -> dict[str, list[str]]:
+        """Save one complete order without replacing the other ranking."""
+        async with self._write_lock:
+            if kind not in RANKING_KINDS:
+                raise ValueError("Unknown ranking kind.")
+            if len(recipe_ids) != len(self._recipes) or set(recipe_ids) != set(self._recipes):
+                raise ValueError("The recipe list has changed. Reload the recipes and try again.")
+            rankings = {**self._rankings, kind: list(recipe_ids)}
+            await self._async_save(self._recipes, rankings)
+            return self.get_rankings()
 
-    async def _async_save(self) -> None:
+    async def _async_save(self, recipes: dict[str, Recipe], rankings: dict[str, list[str]]) -> None:
         """Persist all recipes."""
-        await self._store.async_save({"recipes": self.list_recipes()})
+        normalized_rankings = normalize_rankings(rankings, list(recipes.values()))
+        await self._store.async_save({
+            "recipes": sort_recipes(list(recipes.values())), "rankings": normalized_rankings,
+        })
+        self._recipes = recipes
+        self._rankings = normalized_rankings

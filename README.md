@@ -9,6 +9,9 @@ HA Recipe Manager ist eine Home-Assistant-Custom-Integration für Kochrezepte, Z
 - Nicht abgehakte Zutaten automatisch per `shopping_list.add_item` auf die Home-Assistant-Einkaufsliste setzen
 - Gleiche offene Zutaten zusammenführen: `200g Karotten` + `300 g Karotten` = `500 g Karotten`, `Zwiebel` + `Zwiebel` = `2x Zwiebel`
 - Lesbare Auswahl und Eingabefelder im hellen und dunklen Home-Assistant-Theme
+- Ungefähren Zeitaufwand in Minuten pro Rezept speichern und anzeigen
+- Eigener Ranking-Tab: Rezepte unabhängig nach Geschmack und Kochaufwand sortieren
+- Diagramm aus beiden Ranglisten mit linearer Trendlinie
 - Eigenes Sidebar-Panel unter `/recipes`
 - Dashboard-Karte `custom:ha-recipe-guide-card` für Küchen-Displays
 - Automatische Aktualisierung bereits geöffneter Panels und Dashboard-Karten
@@ -73,6 +76,21 @@ Namensvarianten wie Zwiebel/Zwiebeln werden erkannt. Verschiedene Zutaten,
 abweichende Notizen, unvereinbare Einheiten und unklare Mengen wie „nach Bedarf“
 bleiben getrennt. Erledigte Einträge werden nicht mitgezählt.
 
+Beim Anlegen und Bearbeiten kannst du optional den **Zeitaufwand (ca. Minuten)**
+eintragen. Er erscheint am Rezept, in der Rezeptliste und auf der Dashboard-Karte.
+
+Im Tab **Ranking** enthält jede der beiden Listen alle Rezepte. Bei **Geschmack**
+steht das leckerste Rezept oben, bei **Kochaufwand** das Rezept mit dem geringsten
+Aufwand. Ziehe den Griff eines Rezepts nach oben oder unten; alternativ helfen
+die Auf-/Ab-Buttons oder die Pfeiltasten am fokussierten Griff. Die Reihenfolge
+wird automatisch in Home Assistant gespeichert. Neue Rezepte erscheinen am Ende
+beider Listen; beim Löschen eines Rezepts verschwindet es auch aus den Rankings.
+
+Das Diagramm verwendet die beiden persönlichen Rangplätze. Wenig Aufwand liegt
+links, guter Geschmack oben. Die Zeitangabe bleibt unabhängig vom Aufwandsranking.
+Ab zwei Rezepten erscheint eine lineare Trendlinie. Ein Klick auf einen Rezeptpunkt
+öffnet das Rezept; unter **Alle Rezeptwerte** stehen die Werte als Tabelle.
+
 ## Dashboard-Karte
 
 Die Integration liefert zusätzlich eine Lovelace-Karte für die Rezeptanleitung aus.
@@ -80,9 +98,12 @@ Die Integration liefert zusätzlich eine Lovelace-Karte für die Rezeptanleitung
 Füge diese Ressource unter `Einstellungen > Dashboards > Ressourcen` hinzu:
 
 ```yaml
-url: /ha_recipe_manager_static/recipe-guide-card.js
+url: /ha_recipe_manager_static/recipe-guide-card.js?v=0.2.0
 type: module
 ```
+
+Bei einer bereits eingebundenen Dashboard-Karte die Ressourcen-URL auf diese
+Version aktualisieren, damit auch die neue Zeitangabe geladen wird.
 
 Beispielkarte mit Rezeptauswahl:
 
@@ -123,7 +144,7 @@ Lokale Prüfungen:
 ```powershell
 .\scripts\build-release.ps1
 python -m unittest discover -s tests -v
-python -m py_compile custom_components/ha_recipe_manager/models.py custom_components/ha_recipe_manager/store.py custom_components/ha_recipe_manager/shopping.py custom_components/ha_recipe_manager/websocket.py custom_components/ha_recipe_manager/__init__.py custom_components/ha_recipe_manager/config_flow.py
+python -m compileall -q custom_components/ha_recipe_manager
 node --check custom_components/ha_recipe_manager/frontend/ha-recipe-manager-panel.js
 node --check custom_components/ha_recipe_manager/frontend/recipe-guide-card.js
 ```
@@ -132,6 +153,7 @@ Die Browser-Regressionsprüfung benötigt das Node-Paket `playwright` und Chromi
 
 ```powershell
 node tests/test_frontend.cjs
+node tests/test_rankings.cjs
 ```
 
 Für ein vorhandenes Chrome oder Edge kann `HA_RECIPE_BROWSER_PATH` auf den Pfad

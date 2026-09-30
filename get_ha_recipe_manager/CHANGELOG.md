@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Ungefaehren Zeitaufwand in Minuten pro Rezept eintragen und anzeigen
+- Eigener Ranking-Tab mit getrennten Listen fuer Geschmack und Kochaufwand
+- Reihenfolgen per Ziehgriff, Pfeiltasten oder Auf-/Ab-Buttons aendern
+- Rankings werden in Home Assistant gespeichert und mit anderen Panels synchronisiert
+- Diagramm aus beiden Ranglisten mit Rezeptpunkten und linearer Trendlinie
+- Bestehende Rezepte bleiben erhalten; neue Rezepte werden an beide Ranglisten angehaengt
+
 ## 0.1.4
 
 - Lesbare Auswahl-, Hover- und Eingabefarben im Dark Mode

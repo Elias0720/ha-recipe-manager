@@ -26,7 +26,28 @@ async def ws_list_recipes(
 ) -> None:
     """List all recipes."""
     store = get_store(hass)
-    connection.send_result(msg["id"], {"recipes": store.list_recipes()})
+    connection.send_result(msg["id"], {"recipes": store.list_recipes(), "rankings": store.get_rankings()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/save_ranking",
+        vol.Required("kind"): vol.In(("taste", "effort")),
+        vol.Required("recipe_ids"): [str],
+    }
+)
+@websocket_api.async_response
+async def ws_save_ranking(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Persist one ranking and notify all open panels."""
+    try:
+        rankings = await get_store(hass).async_save_ranking(msg["kind"], msg["recipe_ids"])
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_ranking", str(err))
+        return
+    hass.bus.async_fire(EVENT_RECIPES_UPDATED, {"action": "ranking", "kind": msg["kind"]})
+    connection.send_result(msg["id"], {"rankings": rankings})
 
 
 @websocket_api.websocket_command(
@@ -126,6 +147,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         return
 
     websocket_api.async_register_command(hass, ws_list_recipes)
+    websocket_api.async_register_command(hass, ws_save_ranking)
     websocket_api.async_register_command(hass, ws_get_recipe)
     websocket_api.async_register_command(hass, ws_save_recipe)
     websocket_api.async_register_command(hass, ws_delete_recipe)

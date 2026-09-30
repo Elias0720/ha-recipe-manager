@@ -42,6 +42,7 @@
           id: "pasta-tomate",
           name: "Pasta mit Tomatensauce",
           servings: "4",
+          duration_minutes: 30,
           source_url: "https://example.com/pasta",
           tags: ["Schnell", "Vegetarisch"],
           ingredients: [
@@ -78,10 +79,15 @@
       ];
 
       const listeners = [];
+      const rankings = { taste: recipes.map((recipe) => recipe.id), effort: recipes.map((recipe) => recipe.id) };
       const connection = {
         async sendMessagePromise(message) {
           if (message.type.endsWith("/list")) {
-            return { recipes };
+            return { recipes, rankings: JSON.parse(JSON.stringify(rankings)) };
+          }
+          if (message.type.endsWith("/save_ranking")) {
+            rankings[message.kind] = [...message.recipe_ids];
+            return { rankings: JSON.parse(JSON.stringify(rankings)) };
           }
           if (message.type.endsWith("/add_to_shopping_list")) {
             return {

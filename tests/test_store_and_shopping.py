@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 from pathlib import Path
 import sys
@@ -116,6 +117,86 @@ class FakeHass:
 
 
 class RecipeStoreTest(unittest.IsolatedAsyncioTestCase):
+    async def _ranked_store(self):
+        recipe_store = store_module.RecipeStore(object())
+        for recipe_id in ("pizza", "bolognese", "lasagne"):
+            await recipe_store.async_save_recipe({"id": recipe_id, "name": recipe_id.title()})
+        await recipe_store.async_save_ranking("taste", ["pizza", "bolognese", "lasagne"])
+        await recipe_store.async_save_ranking("effort", ["bolognese", "lasagne", "pizza"])
+        return recipe_store
+
+    async def test_rankings_persist_independently_and_survive_reload(self):
+        recipe_store = await self._ranked_store()
+        saved = recipe_store._store.saved[-1]
+        reloaded = store_module.RecipeStore(object())
+        reloaded._store.data = saved
+        await reloaded.async_load()
+        self.assertEqual(reloaded.get_rankings(), {
+            "taste": ["pizza", "bolognese", "lasagne"],
+            "effort": ["bolognese", "lasagne", "pizza"],
+        })
+        returned = reloaded.get_rankings()
+        returned["taste"].clear()
+        self.assertEqual(len(reloaded.get_rankings()["taste"]), 3)
+
+    async def test_old_storage_is_loaded_and_stale_ranks_are_repaired(self):
+        recipe_store = store_module.RecipeStore(object())
+        recipe_store._store.data = {"recipes": [
+            {"id": "b", "name": "Bolognese"}, {"id": "a", "name": "Lasagne"},
+        ]}
+        await recipe_store.async_load()
+        self.assertEqual(recipe_store.get_rankings(), {"taste": ["b", "a"], "effort": ["b", "a"]})
+        recipe_store._store.data["rankings"] = {"taste": ["a", "a", "deleted", None], "effort": "bad"}
+        await recipe_store.async_load()
+        self.assertEqual(recipe_store.get_rankings(), {"taste": ["a", "b"], "effort": ["b", "a"]})
+
+    async def test_recipe_creation_edit_and_deletion_preserve_other_ranks(self):
+        recipe_store = await self._ranked_store()
+        await recipe_store.async_save_recipe({"id": "apfel", "name": "Apfelstrudel", "duration_minutes": "70"})
+        self.assertEqual(recipe_store.get_rankings()["taste"], ["pizza", "bolognese", "lasagne", "apfel"])
+        await recipe_store.async_save_recipe({"id": "pizza", "name": "Neue Pizza", "duration_minutes": 25})
+        self.assertEqual(recipe_store.get_rankings()["effort"], ["bolognese", "lasagne", "pizza", "apfel"])
+        await recipe_store.async_delete_recipe("bolognese")
+        self.assertEqual(recipe_store.get_rankings()["taste"], ["pizza", "lasagne", "apfel"])
+        self.assertEqual(recipe_store.get_recipe("pizza")["duration_minutes"], 25)
+
+    async def test_invalid_or_stale_ranking_never_changes_saved_order(self):
+        recipe_store = await self._ranked_store()
+        expected = recipe_store.get_rankings()
+        for kind, order in [("unknown", ["pizza", "bolognese", "lasagne"]),
+                            ("taste", ["pizza", "pizza", "lasagne"]),
+                            ("taste", ["pizza", "lasagne"]),
+                            ("taste", ["pizza", "lasagne", "missing"])]:
+            with self.subTest(kind=kind, order=order), self.assertRaises(ValueError):
+                await recipe_store.async_save_ranking(kind, order)
+            self.assertEqual(recipe_store.get_rankings(), expected)
+
+    async def test_failed_persistence_keeps_previous_rankings_and_recipes(self):
+        recipe_store = await self._ranked_store()
+        expected = recipe_store.get_rankings()
+        async def fail(_data):
+            raise OSError("Disk unavailable")
+        recipe_store._store.async_save = fail
+        with self.assertRaises(OSError):
+            await recipe_store.async_save_ranking("taste", ["lasagne", "bolognese", "pizza"])
+        with self.assertRaises(OSError):
+            await recipe_store.async_save_recipe({"id": "new", "name": "New"})
+        with self.assertRaises(OSError):
+            await recipe_store.async_delete_recipe("pizza")
+        self.assertEqual(recipe_store.get_rankings(), expected)
+        self.assertIsNone(recipe_store.get_recipe("new"))
+        self.assertIsNotNone(recipe_store.get_recipe("pizza"))
+
+    async def test_simultaneous_ranking_updates_keep_both_orders(self):
+        recipe_store = await self._ranked_store()
+        await asyncio.gather(
+            recipe_store.async_save_ranking("taste", ["lasagne", "pizza", "bolognese"]),
+            recipe_store.async_save_ranking("effort", ["pizza", "lasagne", "bolognese"]),
+        )
+        self.assertEqual(recipe_store.get_rankings(), {
+            "taste": ["lasagne", "pizza", "bolognese"], "effort": ["pizza", "lasagne", "bolognese"],
+        })
+
     async def test_load_keeps_persisted_timestamps(self):
         recipe_store = store_module.RecipeStore(object())
         recipe_store._store.data = {
@@ -293,4 +374,3 @@ class ShoppingListTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-import asyncio

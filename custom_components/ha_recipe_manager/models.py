@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
 Recipe = dict[str, Any]
 Ingredient = dict[str, str]
+RANKING_KINDS = ("taste", "effort")
 
 
 def utc_timestamp() -> str:
@@ -88,10 +90,15 @@ def normalize_recipe(
         if ingredient is not None
     ]
 
+    duration = clean_text(raw.get("duration_minutes", (existing or {}).get("duration_minutes")))
+    if duration and (not re.fullmatch(r"\d+", duration) or int(duration) < 1):
+        raise ValueError("Time required must be a positive whole number of minutes.")
+
     return {
         "id": recipe_id,
         "name": name,
         "servings": clean_text(raw.get("servings")),
+        "duration_minutes": int(duration) if duration else None,
         "source_url": source_url,
         "tags": normalize_tags(raw.get("tags", [])),
         "ingredients": ingredients,
@@ -110,6 +117,24 @@ def normalize_recipe(
 def sort_recipes(recipes: list[Recipe]) -> list[Recipe]:
     """Sort recipes by their display name."""
     return sorted(recipes, key=lambda recipe: recipe.get("name", "").casefold())
+
+
+def normalize_rankings(raw: Any, recipes: list[Recipe]) -> dict[str, list[str]]:
+    """Keep existing ranks, remove stale IDs and append newly created recipes."""
+    recipe_ids = [recipe["id"] for recipe in sort_recipes(recipes)]
+    valid_ids = set(recipe_ids)
+    rankings = {}
+    for kind in RANKING_KINDS:
+        order = raw.get(kind, []) if isinstance(raw, dict) else []
+        if not isinstance(order, list):
+            order = []
+        seen = set()
+        rankings[kind] = []
+        for recipe_id in [*order, *recipe_ids]:
+            if isinstance(recipe_id, str) and recipe_id in valid_ids and recipe_id not in seen:
+                rankings[kind].append(recipe_id)
+                seen.add(recipe_id)
+    return rankings
 
 
 def ingredient_to_shopping_item(ingredient: Ingredient) -> str:

@@ -205,12 +205,10 @@ class HaRecipeGuideCard extends HTMLElement {
     const showIngredients = this._config.show_ingredients !== false;
     return `
       ${
-        recipe.servings || recipe.tags?.length
+        recipe.servings || recipe.duration_minutes || recipe.tags?.length
           ? `<p class="muted">${
               recipe.servings ? `${recipeCardEscape(recipe.servings)} Portionen` : ""
-            }${recipe.servings && recipe.tags?.length ? " · " : ""}${
-              recipe.tags?.map((tag) => recipeCardEscape(tag)).join(", ") || ""
-            }</p>`
+            }${recipe.servings && recipe.duration_minutes ? " · " : ""}${recipe.duration_minutes ? `ca. ${recipeCardEscape(recipe.duration_minutes)} Min.` : ""}${(recipe.servings || recipe.duration_minutes) && recipe.tags?.length ? " · " : ""}${recipe.tags?.map((tag) => recipeCardEscape(tag)).join(", ") || ""}</p>`
           : ""
       }
       ${

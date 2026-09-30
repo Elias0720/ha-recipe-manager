@@ -20,6 +20,16 @@ normalize_recipe = models.normalize_recipe
 
 
 class RecipeModelTest(unittest.TestCase):
+    def test_optional_time_minutes_and_existing_recipes(self):
+        self.assertIsNone(normalize_recipe({"name": "Pasta"})["duration_minutes"])
+        recipe = normalize_recipe({"name": "Pasta", "duration_minutes": " 45 "})
+        self.assertEqual(recipe["duration_minutes"], 45)
+        self.assertEqual(normalize_recipe({"name": "Pasta"}, existing=recipe)["duration_minutes"], 45)
+        self.assertIsNone(normalize_recipe({"name": "Pasta", "duration_minutes": ""}, existing=recipe)["duration_minutes"])
+        for invalid in ("abc", "30.5", -1, 0, True):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                normalize_recipe({"name": "Pasta", "duration_minutes": invalid})
+
     def test_normalize_recipe_drops_empty_ingredients(self):
         recipe = normalize_recipe(
             {

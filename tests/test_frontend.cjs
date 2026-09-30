@@ -52,6 +52,7 @@ async function main() {
       query('[data-action="new"]').click();
       input("#edit-name", "Pasta mit frischen Kräutern");
       input("#edit-servings", "4");
+      input("#edit-duration", "45");
       input("#edit-tags", "Vegetarisch, Schnell, ");
       input("#edit-source", "https://example.com/rezept");
       input('[name="quantity"]', "200");
@@ -60,7 +61,7 @@ async function main() {
       input('[name="note"]', "frisch");
       input("#edit-instructions", "Wasser aufkochen.\nNudeln darin garen. ");
 
-      const selectors = ["#edit-name", "#edit-servings", "#edit-tags", "#edit-source",
+      const selectors = ["#edit-name", "#edit-servings", "#edit-duration", "#edit-tags", "#edit-source",
         '[name="quantity"]', '[name="unit"]', '[name="name"]', '[name="note"]',
         "#edit-instructions"];
       for (const selector of selectors) {
@@ -125,6 +126,8 @@ async function main() {
       check(!query(".modal"), "Successful save did not close the editor");
       check(query(".main h2").textContent === saved.name, "Saved recipe was not selected");
       check(saved.ingredients[0].name === "Nudeln", "Saved recipe lost its ingredient");
+      check(saved.duration_minutes === "45", "Saved recipe lost its time estimate");
+      check(query(".main").textContent.includes("ca. 45 Min."), "Recipe does not display its time estimate");
       completed.push("A successful save submits the full draft and selects the recipe");
       connection.sendMessagePromise = originalSend;
 
@@ -227,10 +230,10 @@ async function main() {
       await page.mouse.move(0, 0);
       assert.equal(await page.locator('[data-action="set-day"]').count(), 0);
       for (const selector of [".recipe-button.active strong", ".recipe-button.active .muted",
-        ".segment .active", ".ingredient.checked span", '[data-action="add-missing"]']) {
+        ".segment .active", ".app-tabs .active", ".ingredient.checked span", '[data-action="add-missing"]']) {
         await checkContrast(selector);
       }
-      for (const selector of [".recipe-button.active", ".segment .active", '[data-action="add-missing"]']) {
+      for (const selector of [".recipe-button.active", ".segment .active", ".app-tabs .active", '[data-action="add-missing"]']) {
         await page.locator(selector).hover();
         await checkContrast(selector);
         if (selector === ".recipe-button.active") await checkContrast(".recipe-button.active .muted");

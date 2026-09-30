@@ -13,8 +13,8 @@ EVENT_SHOPPING_LIST_FILLED = f"{DOMAIN}_shopping_list_filled"
 
 FRONTEND_BASE = f"/{DOMAIN}_static"
 PANEL_URL_PATH = "recipes"
-PANEL_MODULE_URL = f"{FRONTEND_BASE}/ha-recipe-manager-panel.js?v=0.1.4"
-CARD_MODULE_URL = f"{FRONTEND_BASE}/recipe-guide-card.js"
+PANEL_MODULE_URL = f"{FRONTEND_BASE}/ha-recipe-manager-panel.js?v=0.2.0"
+CARD_MODULE_URL = f"{FRONTEND_BASE}/recipe-guide-card.js?v=0.2.0"
 
 PANEL_NAME = "ha-recipe-manager-panel"
 PANEL_TITLE = "Rezepte"
