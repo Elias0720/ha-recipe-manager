@@ -119,3 +119,14 @@ python -m py_compile custom_components/ha_recipe_manager/models.py custom_compon
 node --check custom_components/ha_recipe_manager/frontend/ha-recipe-manager-panel.js
 node --check custom_components/ha_recipe_manager/frontend/recipe-guide-card.js
 ```
+
+Die Browser-Regressionsprüfung benötigt das Node-Paket `playwright` und Chromium:
+
+```powershell
+node tests/test_frontend.cjs
+```
+
+Für ein vorhandenes Chrome oder Edge kann `HA_RECIPE_BROWSER_PATH` auf den Pfad
+der Browser-Datei gesetzt werden. Die Prüfung simuliert Home-Assistant- und
+Rezept-Aktualisierungen während der Eingabe sowie fehlgeschlagenes Speichern
+und kontrolliert die Hover-Farbe im Browser.

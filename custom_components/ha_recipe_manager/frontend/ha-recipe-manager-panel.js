@@ -74,8 +74,6 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._subscribeRecipeUpdates();
     if (!this._loaded && hass?.connection) {
       this._loadRecipes();
-    } else {
-      this._render();
     }
   }
 
@@ -106,7 +104,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     }
     this._loading = true;
     this._error = "";
-    this._render();
+    this._render({ updateEditor: false });
 
     try {
       const response = await this._api("list");
@@ -119,7 +117,7 @@ class HaRecipeManagerPanel extends HTMLElement {
       this._error = err?.message || "Rezepte konnten nicht geladen werden.";
     } finally {
       this._loading = false;
-      this._render();
+      this._render({ updateEditor: false });
     }
   }
 
@@ -215,7 +213,11 @@ class HaRecipeManagerPanel extends HTMLElement {
 
   async _saveDraft() {
     const recipe = this._collectDraftFromForm();
-    if (!recipe?.name) {
+    if (!recipe) {
+      return;
+    }
+    this._draft = recipe;
+    if (!recipe.name) {
       this._editorError = "Bitte gib dem Rezept einen Namen.";
       this._render();
       return;
@@ -260,7 +262,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     } catch (err) {
       this._error = err?.message || "Rezept konnte nicht gelöscht werden.";
     }
-    this._render();
+    this._render({ updateEditor: false });
   }
 
   async _addMissingToShoppingList() {
@@ -271,7 +273,7 @@ class HaRecipeManagerPanel extends HTMLElement {
 
     this._message = "";
     this._error = "";
-    this._render();
+    this._render({ updateEditor: false });
 
     try {
       const response = await this._api("add_to_shopping_list", {
@@ -285,7 +287,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     } catch (err) {
       this._error = err?.message || "Einkaufsliste konnte nicht aktualisiert werden.";
     }
-    this._render();
+    this._render({ updateEditor: false });
   }
 
   async _copySelectedRecipeId() {
@@ -305,7 +307,7 @@ class HaRecipeManagerPanel extends HTMLElement {
     } catch (_err) {
       this._message = `Rezept-ID: ${recipe.id}`;
     }
-    this._render();
+    this._render({ updateEditor: false });
   }
 
   _collectDraftFromForm() {
@@ -462,10 +464,10 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._render();
   }
 
-  _render() {
+  _render({ updateEditor = true } = {}) {
     const recipe = this._selectedRecipe();
 
-    this.shadowRoot.innerHTML = `
+    const content = `
       <style>
         :host {
           display: block;
@@ -500,7 +502,7 @@ class HaRecipeManagerPanel extends HTMLElement {
           white-space: nowrap;
         }
 
-        button:hover {
+        button:hover:not(:disabled) {
           background: var(--secondary-background-color, #eef2f5);
         }
 
@@ -513,6 +515,12 @@ class HaRecipeManagerPanel extends HTMLElement {
           background: var(--primary-color, #2f7d5b);
           border-color: var(--primary-color, #2f7d5b);
           color: var(--text-primary-color, #fff);
+        }
+
+        .primary:hover:not(:disabled) {
+          background: #1f5a3d;
+          border-color: #1f5a3d;
+          color: #fff;
         }
 
         .danger {
@@ -848,6 +856,17 @@ class HaRecipeManagerPanel extends HTMLElement {
       </div>
       ${this._draft ? this._renderEditor() : ""}
     `;
+
+    if (!updateEditor && this.shadowRoot.querySelector(".shell")) {
+      // Keep editor and search inputs mounted during background recipe updates.
+      const template = document.createElement("template");
+      template.innerHTML = content;
+      for (const selector of [".main", ".recipe-list"]) {
+        this.shadowRoot.querySelector(selector).replaceWith(template.content.querySelector(selector));
+      }
+    } else {
+      this.shadowRoot.innerHTML = content;
+    }
   }
 
   _renderEmptyState() {
