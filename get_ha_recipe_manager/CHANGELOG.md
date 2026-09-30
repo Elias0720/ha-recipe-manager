@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.4
+
+- Lesbare Auswahl-, Hover- und Eingabefarben im Dark Mode
+- Wochentagsfeld entfernt
+- Gleiche Zutaten werden auf der Einkaufsliste zusammengefasst und Mengen addiert
+- Zutaten ohne Mengenangabe werden als 2x Zwiebel oder 2x Sellerie gezaehlt
+- Umrechnung kompatibler Einheiten wie g/kg, dag/g und ml/l
+- Bereits erledigte Einkaeufe bleiben unveraendert; gleichzeitige Rezeptzugaben werden nacheinander verarbeitet
+
 ## 0.1.3
 
 - Eingabefelder behalten Text und Fokus bei Home-Assistant- und Rezept-Aktualisierungen

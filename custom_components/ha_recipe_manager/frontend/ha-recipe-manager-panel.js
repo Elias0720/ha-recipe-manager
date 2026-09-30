@@ -1,5 +1,4 @@
 const DOMAIN = "ha_recipe_manager";
-const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 const emptyIngredient = () => ({
   id: "",
@@ -60,7 +59,6 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._error = "";
     this._draft = undefined;
     this._editorError = "";
-    this._plannedDays = this._loadPlannedDays();
     this._unsubscribeRecipes = undefined;
     this._subscriptionPending = false;
 
@@ -149,18 +147,6 @@ class HaRecipeManagerPanel extends HTMLElement {
     }
   }
 
-  _loadPlannedDays() {
-    try {
-      return JSON.parse(localStorage.getItem(`${DOMAIN}:planned_days`) || "{}");
-    } catch (_err) {
-      return {};
-    }
-  }
-
-  _savePlannedDays() {
-    localStorage.setItem(`${DOMAIN}:planned_days`, JSON.stringify(this._plannedDays));
-  }
-
   _selectedRecipe() {
     return this._recipes.find((recipe) => recipe.id === this._selectedId);
   }
@@ -196,15 +182,11 @@ class HaRecipeManagerPanel extends HTMLElement {
         (item) => `
           <button class="recipe-button ${
             item.id === this._selectedId ? "active" : ""
-          }" data-action="select" data-id="${escapeHtml(item.id)}">
+          }" data-action="select" data-id="${escapeHtml(item.id)}" aria-pressed="${item.id === this._selectedId}">
             <ha-icon icon="mdi:silverware-fork-knife"></ha-icon>
             <span class="recipe-title">
               <strong>${escapeHtml(item.name)}</strong><br>
-              <span class="muted">${item.ingredients.length} Zutaten${
-          this._plannedDays[item.id]
-            ? ` · ${escapeHtml(this._plannedDays[item.id])}`
-            : ""
-        }</span>
+              <span class="muted">${item.ingredients.length} Zutaten</span>
             </span>
           </button>`
       )
@@ -254,8 +236,6 @@ class HaRecipeManagerPanel extends HTMLElement {
     try {
       await this._api("delete", { recipe_id: recipe.id });
       this._recipes = this._recipes.filter((item) => item.id !== recipe.id);
-      delete this._plannedDays[recipe.id];
-      this._savePlannedDays();
       this._selectedId = this._recipes[0]?.id;
       this._checked = new Set();
       this._message = "Rezept gelöscht.";
@@ -283,7 +263,7 @@ class HaRecipeManagerPanel extends HTMLElement {
       this._message =
         response.count === 0
           ? "Alle Zutaten waren abgehakt."
-          : `${response.count} Zutaten zur Einkaufsliste hinzugefügt.`;
+          : `Einkaufsliste aktualisiert: ${response.count} Zutaten übernommen.`;
     } catch (err) {
       this._error = err?.message || "Einkaufsliste konnte nicht aktualisiert werden.";
     }
@@ -425,19 +405,6 @@ class HaRecipeManagerPanel extends HTMLElement {
       return;
     }
 
-    if (action === "set-day") {
-      const recipe = this._selectedRecipe();
-      if (recipe) {
-        const day = target.dataset.day;
-        if (this._plannedDays[recipe.id] === day) {
-          delete this._plannedDays[recipe.id];
-        } else {
-          this._plannedDays[recipe.id] = day;
-        }
-        this._savePlannedDays();
-        this._render();
-      }
-    }
   }
 
   _handleInput(event) {
@@ -475,6 +442,8 @@ class HaRecipeManagerPanel extends HTMLElement {
           color: var(--primary-text-color, #1f2933);
           background: var(--primary-background-color, #f7f8fa);
           font-family: var(--paper-font-body1_-_font-family, Roboto, Arial, sans-serif);
+          color-scheme: var(--ha-color-scheme, light dark);
+          --recipe-selection-background: color-mix(in srgb, var(--primary-color, #2f7d5b) 18%, var(--card-background-color, #fff));
         }
 
         * {
@@ -506,15 +475,32 @@ class HaRecipeManagerPanel extends HTMLElement {
           background: var(--secondary-background-color, #eef2f5);
         }
 
+        button:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        a:focus-visible {
+          outline: 2px solid var(--primary-color, #2f7d5b);
+          outline-offset: 3px;
+        }
+
+        ::selection {
+          background: #1f5a3d;
+          color: #fff;
+        }
+
+        a {
+          color: var(--link-text-color, var(--primary-color, #2f7d5b));
+        }
+
         button:disabled {
           cursor: default;
           opacity: 0.55;
         }
 
         .primary {
-          background: var(--primary-color, #2f7d5b);
-          border-color: var(--primary-color, #2f7d5b);
-          color: var(--text-primary-color, #fff);
+          background: #2f7d5b;
+          border-color: #2f7d5b;
+          color: #fff;
         }
 
         .primary:hover:not(:disabled) {
@@ -546,7 +532,6 @@ class HaRecipeManagerPanel extends HTMLElement {
         .title-row,
         .toolbar,
         .status-row,
-        .day-strip,
         .ingredient-actions {
           display: flex;
           align-items: center;
@@ -585,13 +570,21 @@ class HaRecipeManagerPanel extends HTMLElement {
 
         .search,
         .field input,
-        .field textarea {
+        .field textarea,
+        .ingredient-row input {
           width: 100%;
           border: 1px solid var(--divider-color, #d9dee4);
           border-radius: 8px;
           padding: 10px 12px;
           background: var(--card-background-color, #fff);
           color: var(--primary-text-color, #1f2933);
+          caret-color: var(--primary-text-color, #1f2933);
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+          color: var(--secondary-text-color, #64707d);
+          opacity: 1;
         }
 
         .recipe-list {
@@ -610,7 +603,9 @@ class HaRecipeManagerPanel extends HTMLElement {
 
         .recipe-button.active {
           border-color: var(--primary-color, #2f7d5b);
-          background: color-mix(in srgb, var(--primary-color, #2f7d5b) 12%, white);
+          background: var(--recipe-selection-background);
+          color: var(--primary-text-color, #1f2933);
+          box-shadow: inset 3px 0 0 var(--primary-color, #2f7d5b);
         }
 
         .recipe-title {
@@ -621,6 +616,10 @@ class HaRecipeManagerPanel extends HTMLElement {
         .muted {
           color: var(--secondary-text-color, #64707d);
           font-size: 13px;
+        }
+
+        .recipe-button.active .muted {
+          color: var(--primary-text-color, #1f2933);
         }
 
         .main {
@@ -652,19 +651,16 @@ class HaRecipeManagerPanel extends HTMLElement {
           border-radius: 0 8px 8px 0;
         }
 
-        .segment .active,
-        .day.active {
+        .segment .active {
           border-color: var(--primary-color, #2f7d5b);
-          background: color-mix(in srgb, var(--primary-color, #2f7d5b) 14%, white);
+          background: var(--recipe-selection-background);
+          color: var(--primary-text-color, #1f2933);
+          box-shadow: inset 0 -3px 0 var(--primary-color, #2f7d5b);
         }
 
-        .day-strip {
-          flex-wrap: wrap;
-        }
-
-        .day {
-          width: 44px;
-          padding: 0;
+        .recipe-button.active:hover,
+        .segment .active:hover {
+          background: color-mix(in srgb, var(--primary-color, #2f7d5b) 24%, var(--card-background-color, #fff));
         }
 
         .stats {
@@ -714,8 +710,19 @@ class HaRecipeManagerPanel extends HTMLElement {
           border-radius: 8px;
         }
 
+        .ingredient input {
+          width: 18px;
+          height: 18px;
+          accent-color: #2f7d5b;
+        }
+
+        .ingredient.checked {
+          background: var(--recipe-selection-background);
+          border-color: var(--primary-color, #2f7d5b);
+        }
+
         .ingredient.checked span {
-          color: var(--secondary-text-color, #64707d);
+          color: var(--primary-text-color, #1f2933);
           text-decoration: line-through;
         }
 
@@ -904,26 +911,12 @@ class HaRecipeManagerPanel extends HTMLElement {
         </div>
 
         <div class="toolbar segment">
-          <button class="${this._view === "prep" ? "active" : ""}" data-action="view" data-view="prep">
+          <button class="${this._view === "prep" ? "active" : ""}" data-action="view" data-view="prep" aria-pressed="${this._view === "prep"}">
             <ha-icon icon="mdi:checkbox-marked-outline"></ha-icon>Zutaten
           </button>
-          <button class="${this._view === "guide" ? "active" : ""}" data-action="view" data-view="guide">
+          <button class="${this._view === "guide" ? "active" : ""}" data-action="view" data-view="guide" aria-pressed="${this._view === "guide"}">
             <ha-icon icon="mdi:book-open-page-variant-outline"></ha-icon>Anleitung
           </button>
-        </div>
-
-        <div class="section">
-          <div class="status-row">
-            <h3>Wochentag</h3>
-            <div class="day-strip">
-              ${DAYS.map(
-                (day) => `
-                  <button class="day ${
-                    this._plannedDays[recipe.id] === day ? "active" : ""
-                  }" data-action="set-day" data-day="${day}">${day}</button>`
-              ).join("")}
-            </div>
-          </div>
         </div>
 
         <div class="stats">

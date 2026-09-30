@@ -130,7 +130,6 @@ def missing_ingredients(recipe: Recipe, checked_ingredient_ids: list[str] | set[
     """Return ingredients that were not checked as already available."""
     checked = {clean_text(item) for item in checked_ingredient_ids if clean_text(item)}
     missing: list[Ingredient] = []
-    seen_labels: set[str] = set()
 
     for ingredient in recipe.get("ingredients", []):
         if not isinstance(ingredient, dict):
@@ -143,11 +142,6 @@ def missing_ingredients(recipe: Recipe, checked_ingredient_ids: list[str] | set[
         if normalized is None:
             continue
 
-        label_key = ingredient_to_shopping_item(normalized).casefold()
-        if label_key in seen_labels:
-            continue
-
         missing.append(normalized)
-        seen_labels.add(label_key)
 
     return missing

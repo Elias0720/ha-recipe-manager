@@ -6,13 +6,14 @@ NAME = "HA Recipe Manager"
 DATA_STORE = "store"
 DATA_WEBSOCKET_REGISTERED = "websocket_registered"
 DATA_FRONTEND_REGISTERED = "frontend_registered"
+DATA_SHOPPING_LOCK = "shopping_lock"
 
 EVENT_RECIPES_UPDATED = f"{DOMAIN}_recipes_updated"
 EVENT_SHOPPING_LIST_FILLED = f"{DOMAIN}_shopping_list_filled"
 
 FRONTEND_BASE = f"/{DOMAIN}_static"
 PANEL_URL_PATH = "recipes"
-PANEL_MODULE_URL = f"{FRONTEND_BASE}/ha-recipe-manager-panel.js?v=0.1.3"
+PANEL_MODULE_URL = f"{FRONTEND_BASE}/ha-recipe-manager-panel.js?v=0.1.4"
 CARD_MODULE_URL = f"{FRONTEND_BASE}/recipe-guide-card.js"
 
 PANEL_NAME = "ha-recipe-manager-panel"

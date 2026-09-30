@@ -36,7 +36,7 @@ class RecipeModelTest(unittest.TestCase):
         self.assertEqual(len(recipe["ingredients"]), 1)
         self.assertEqual(recipe["ingredients"][0]["name"], "Nudeln")
 
-    def test_missing_ingredients_uses_checked_ids_and_deduplicates_labels(self):
+    def test_missing_ingredients_uses_checked_ids_and_keeps_repeated_amounts(self):
         recipe = normalize_recipe(
             {
                 "name": "Fruehstueck",
@@ -50,7 +50,7 @@ class RecipeModelTest(unittest.TestCase):
 
         missing = missing_ingredients(recipe, {"a"})
 
-        self.assertEqual([ingredient["name"] for ingredient in missing], ["Brot"])
+        self.assertEqual([ingredient["name"] for ingredient in missing], ["Brot", "Brot"])
 
     def test_ingredient_to_shopping_item_includes_note(self):
         label = ingredient_to_shopping_item(

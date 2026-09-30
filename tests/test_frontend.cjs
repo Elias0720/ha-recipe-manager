@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { readFileSync, mkdirSync } = require("node:fs");
 const { join } = require("node:path");
 const { chromium } = require("playwright");
 
@@ -171,6 +171,89 @@ async function main() {
     await page.mouse.move(shoppingBounds.x + shoppingBounds.width / 2, shoppingBounds.y + shoppingBounds.height / 2);
     assert.equal(await shopping.evaluate((button) => getComputedStyle(button).backgroundColor), disabledColor);
     checks.push("Disabled shopping button retains its background on hover");
+
+    for (const theme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.evaluate((theme) => {
+        const variables = theme === "dark" ? {
+          "primary-color": "#009ac7", "primary-text-color": "#e8e8e8",
+          "secondary-text-color": "#b0b0b0", "primary-background-color": "#111111",
+          "secondary-background-color": "#282828", "card-background-color": "#1c1c1c",
+          "divider-color": "#454545", "error-color": "#ff8a80", "ha-color-scheme": "dark",
+        } : {
+          "primary-color": "#2f7d5b", "primary-text-color": "#1f2933",
+          "secondary-text-color": "#64707d", "primary-background-color": "#f7f8fa",
+          "secondary-background-color": "#eef2f5", "card-background-color": "#ffffff",
+          "divider-color": "#d9dee4", "error-color": "#b3261e", "ha-color-scheme": "light",
+        };
+        for (const [name, value] of Object.entries(variables)) {
+          document.documentElement.style.setProperty(`--${name}`, value);
+        }
+        const panel = document.querySelector("ha-recipe-manager-panel");
+        panel._checked = new Set([panel._selectedRecipe().ingredients[0].id]);
+        panel._render();
+      }, theme);
+
+      const checkContrast = async (selector, pseudo = null) => {
+        await page.locator(selector).first().evaluate((element, pseudo) => {
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          const rgba = color => {
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const luminance = channels => channels.slice(0, 3).reduce((sum, channel, index) => {
+            const value = channel / 255;
+            const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            return sum + linear * [0.2126, 0.7152, 0.0722][index];
+          }, 0);
+          let background = rgba(getComputedStyle(element, pseudo).backgroundColor);
+          let current = element;
+          while (background[3] !== 255 && current) {
+            background = rgba(getComputedStyle(current).backgroundColor);
+            if (background[3] === 255) break;
+            current = current.parentElement || current.getRootNode().host;
+          }
+          const foreground = rgba(getComputedStyle(element, pseudo).color);
+          const a = luminance(foreground);
+          const b = luminance(background);
+          const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          if (contrast < 4.5) throw new Error(`${element.outerHTML}: contrast ${contrast.toFixed(2)} is below 4.5`);
+        }, pseudo);
+      };
+
+      await page.mouse.move(0, 0);
+      assert.equal(await page.locator('[data-action="set-day"]').count(), 0);
+      for (const selector of [".recipe-button.active strong", ".recipe-button.active .muted",
+        ".segment .active", ".ingredient.checked span", '[data-action="add-missing"]']) {
+        await checkContrast(selector);
+      }
+      for (const selector of [".recipe-button.active", ".segment .active", '[data-action="add-missing"]']) {
+        await page.locator(selector).hover();
+        await checkContrast(selector);
+        if (selector === ".recipe-button.active") await checkContrast(".recipe-button.active .muted");
+      }
+      await page.mouse.move(0, 0);
+      const outputDir = process.env.HA_RECIPE_QA_DIR;
+      if (outputDir) {
+        mkdirSync(outputDir, { recursive: true });
+        await page.screenshot({ path: join(outputDir, `panel-${theme}.png`), fullPage: true });
+      }
+      await page.locator('[data-action="edit"]').click();
+      for (const selector of ["#edit-name", "#edit-instructions", '[name="quantity"]',
+        '[name="unit"]', '[name="name"]', '[name="note"]']) {
+        await checkContrast(selector);
+        await page.locator(selector).first().focus();
+        assert.notEqual(await page.locator(selector).first().evaluate(field => getComputedStyle(field).outlineStyle), "none");
+      }
+      await checkContrast('[name="note"]', "::placeholder");
+      await checkContrast("#edit-name", "::selection");
+      if (outputDir) await page.screenshot({ path: join(outputDir, `editor-${theme}.png`), fullPage: true });
+      await page.locator('[data-action="close-editor"]').first().click();
+      checks.push(`${theme}: selected and hovered recipes/tabs, checked ingredients, buttons, fields, placeholders and text selection meet 4.5:1 contrast; weekdays are removed`);
+    }
     assert.deepEqual(errors, []);
     for (const check of checks) console.log(`PASS: ${check}`);
   } finally {

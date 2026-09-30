@@ -7,6 +7,8 @@ HA Recipe Manager ist eine Home-Assistant-Custom-Integration für Kochrezepte, Z
 - Rezepte mit Zutaten, Portionen, Kategorien, Quelle und Anleitung speichern
 - Rezept vor dem Einkauf auswählen und vorhandene Zutaten abhaken
 - Nicht abgehakte Zutaten automatisch per `shopping_list.add_item` auf die Home-Assistant-Einkaufsliste setzen
+- Gleiche offene Zutaten zusammenführen: `200g Karotten` + `300 g Karotten` = `500 g Karotten`, `Zwiebel` + `Zwiebel` = `2x Zwiebel`
+- Lesbare Auswahl und Eingabefelder im hellen und dunklen Home-Assistant-Theme
 - Eigenes Sidebar-Panel unter `/recipes`
 - Dashboard-Karte `custom:ha-recipe-guide-card` für Küchen-Displays
 - Automatische Aktualisierung bereits geöffneter Panels und Dashboard-Karten
@@ -64,6 +66,12 @@ Nach der Einrichtung erscheint in der Sidebar der Eintrag `Rezepte`.
 5. `Fehlende auf Einkaufsliste` klicken.
 
 Die Integration fügt dann alle nicht abgehakten Zutaten zur Home-Assistant-Einkaufsliste hinzu.
+Bereits vorhandene offene Einträge werden dabei aktualisiert. Mengen mit kompatiblen
+Einheiten (z. B. g/kg, dag/g und ml/l) werden addiert; ohne Mengenangabe zählt jede
+Zugabe als ein Stück. Groß-/Kleinschreibung, zusätzliche Leerzeichen und übliche
+Namensvarianten wie Zwiebel/Zwiebeln werden erkannt. Verschiedene Zutaten,
+abweichende Notizen, unvereinbare Einheiten und unklare Mengen wie „nach Bedarf“
+bleiben getrennt. Erledigte Einträge werden nicht mitgezählt.
 
 ## Dashboard-Karte
 
