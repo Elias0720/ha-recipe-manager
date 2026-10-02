@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from .calorie_values import calorie_basis, calorie_sources, total_calories
+from .calorie_values import NUTRIENT_FIELDS, calorie_basis, calorie_sources, nutrition_totals
 
 Recipe = dict[str, Any]
 Ingredient = dict[str, str]
@@ -115,25 +115,44 @@ def normalize_recipe(
         ),
     }
     previous = existing or {}
-    calories = total_calories(raw.get("total_kcal", previous.get("total_kcal")))
-    recipe["total_kcal"] = calories
-    if calories is None:
+    recipe.update(nutrition_totals(raw, previous))
+    known_fields = {key for key in NUTRIENT_FIELDS if recipe[key] is not None}
+    edited_fields = {key for key in NUTRIENT_FIELDS if recipe[key] != previous.get(key)}
+    manual_fields = raw.get("nutrition_manual_fields", [])
+    if isinstance(manual_fields, list):
+        edited_fields.update(key for key in manual_fields if isinstance(key, str) and key in NUTRIENT_FIELDS)
+    if raw.get("calories_manual") is True:
+        edited_fields.add("total_kcal")
+    basis = calorie_basis(recipe)
+    if not known_fields:
         recipe.update(calories_source=None, calories_basis="", calories_notes="",
                       calories_sources=[], calories_updated_at="", calories_revision="", calories_stale=False)
-    elif calories != previous.get("total_kcal") or raw.get("calories_manual") is True:
-        recipe.update(calories_source="manual", calories_basis=calorie_basis(recipe),
-                      calories_notes="", calories_sources=[], calories_updated_at=timestamp,
-                      calories_revision=uuid4().hex, calories_stale=False)
-    else:
-        basis = clean_text(previous.get("calories_basis"))
+    elif edited_fields:
+        all_confirmed = known_fields <= edited_fields
+        previous_basis = clean_text(previous.get("calories_basis"))
+        current_basis = basis if all_confirmed or not any(
+            previous.get(key) is not None for key in NUTRIENT_FIELDS
+        ) or previous_basis == basis else previous_basis
+        mixed = not all_confirmed and previous.get("calories_source") in {"ai", "mixed"}
         recipe.update(
-            calories_source="ai" if previous.get("calories_source") == "ai" else "manual",
-            calories_basis=basis,
+            calories_source="mixed" if mixed else "manual",
+            calories_basis=current_basis,
+            calories_notes=clean_text(previous.get("calories_notes"))[:4000] if mixed else "",
+            calories_sources=calorie_sources(previous.get("calories_sources")) if mixed else [],
+            calories_updated_at=timestamp,
+            calories_revision=uuid4().hex,
+            calories_stale=current_basis != basis,
+        )
+    else:
+        previous_basis = clean_text(previous.get("calories_basis"))
+        recipe.update(
+            calories_source=previous.get("calories_source") if previous.get("calories_source") in {"ai", "mixed"} else "manual",
+            calories_basis=previous_basis,
             calories_notes=clean_text(previous.get("calories_notes"))[:4000],
             calories_sources=calorie_sources(previous.get("calories_sources")),
             calories_updated_at=clean_text(previous.get("calories_updated_at")),
             calories_revision=clean_text(previous.get("calories_revision")),
-            calories_stale=basis != calorie_basis(recipe),
+            calories_stale=previous_basis != basis,
         )
     return recipe
 

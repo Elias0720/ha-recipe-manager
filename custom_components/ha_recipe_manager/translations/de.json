@@ -14,9 +14,9 @@
   "options": {
     "step": {
       "init": {
-        "title": "Kalorienschätzung",
-        "description": "Wähle deinen vorhandenen KI-Konversationsagenten. Für neue kostenlose Gemini-Projekte: gemini-3.8-flash, keine HA-Steuerung, Google-Suche ausgeschaltet. Die Kalorien werden dann ohne Live-Recherche geschätzt.",
-        "data": {"calorie_agent_id": "Konversationsagent für Gesamtkalorien"}
+        "title": "Nährwertschätzung",
+        "description": "Wähle deinen vorhandenen KI-Konversationsagenten. Für neue kostenlose Gemini-Projekte: gemini-3.8-flash, keine HA-Steuerung, Google-Suche ausgeschaltet. Kalorien, Protein, Fett und Zucker werden dann ohne Live-Recherche für das gesamte Rezept geschätzt.",
+        "data": {"calorie_agent_id": "Konversationsagent für Nährwerte"}
       }
     }
   },

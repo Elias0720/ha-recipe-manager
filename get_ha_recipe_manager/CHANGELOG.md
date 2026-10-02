@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Protein, Fett und Zucker in Gramm neben den Gesamtkalorien anzeigen und in derselben KI-Abfrage schaetzen
+- Alle vier Werte gelten fuer das gesamte Rezept und lassen sich einzeln manuell korrigieren oder entfernen
+- Grammwerte auf eine Nachkommastelle runden; Zucker umfasst natuerlichen und zugesetzten Zucker
+- Nährwerte auch auf der Dashboard-Karte anzeigen
+- Bestehende Kalorienwerte erhalten; neue Werte bleiben bis zur ersten Schaetzung unbekannt
+- Unvollstaendige KI-Antworten und Ergebnisse bei zwischenzeitlichen manuellen Korrekturen ueberschreiben keine gespeicherten Werte
+
 ## 0.3.1
 
 - Kalorienschätzung auch mit einem Konversationsagenten ohne Suchwerkzeug erlauben

@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
-from .calorie_values import calorie_basis
+from .calorie_values import NUTRIENT_FIELDS, calorie_basis
 from .models import RANKING_KINDS, Recipe, normalize_rankings, normalize_recipe, sort_recipes, utc_timestamp
 
 
@@ -77,7 +77,7 @@ class RecipeStore:
                 raise ValueError("Das Rezept wurde während der Schätzung gelöscht.")
             if calorie_basis(current) != calorie_basis(snapshot) or any(
                 current.get(key) != snapshot.get(key)
-                for key in ("total_kcal", "calories_source", "calories_basis", "calories_revision")
+                for key in (*NUTRIENT_FIELDS, "calories_source", "calories_basis", "calories_revision")
             ):
                 raise ValueError("Das Rezept wurde während der Schätzung geändert. Bitte erneut schätzen.")
             timestamp = utc_timestamp()

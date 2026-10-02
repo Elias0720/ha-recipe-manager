@@ -1,4 +1,10 @@
 const RECIPE_CARD_DOMAIN = "ha_recipe_manager";
+const CARD_NUTRIENTS = [
+  ["total_kcal", "Kalorien", "kcal"],
+  ["total_protein_g", "Protein", "g"],
+  ["total_fat_g", "Fett", "g"],
+  ["total_sugar_g", "Zucker", "g"],
+];
 
 const recipeCardEscape = (value) =>
   String(value ?? "")
@@ -171,6 +177,23 @@ class HaRecipeGuideCard extends HTMLElement {
         .muted {
           color: var(--secondary-text-color);
         }
+
+        .nutrition {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 10px;
+          margin-top: 8px;
+        }
+
+        .nutrition span,
+        .nutrition strong {
+          display: block;
+          overflow-wrap: anywhere;
+        }
+
+        .nutrition span {
+          color: var(--secondary-text-color);
+        }
       </style>
       <ha-card>
         <div class="card">
@@ -226,9 +249,13 @@ class HaRecipeGuideCard extends HTMLElement {
             </section>`
           : ""
       }
-      ${recipe.total_kcal !== null && recipe.total_kcal !== undefined
-        ? `<section><h3>Gesamtkalorien</h3><p>ca. ${recipeCardEscape(Number(recipe.total_kcal).toLocaleString("de-AT"))} kcal gesamt</p>
-          ${recipe.calories_stale ? '<p class="muted">Schätzung veraltet – bitte im Rezept-Panel aktualisieren.</p>' : ""}</section>` : ""}
+      ${CARD_NUTRIENTS.some(([key]) => recipe[key] !== null && recipe[key] !== undefined)
+        ? `<section><h3>Nährwerte für das gesamte Rezept</h3><div class="nutrition">
+            ${CARD_NUTRIENTS.map(([key, label, unit]) => `<div data-nutrient="${key}"><span>${label}</span><strong>${
+              recipe[key] !== null && recipe[key] !== undefined
+                ? `ca. ${recipeCardEscape(Number(recipe[key]).toLocaleString("de-AT", { maximumFractionDigits: 1 }))} ${unit}${key === "total_kcal" ? " gesamt" : ""}` : "—"
+            }</strong></div>`).join("")}
+          </div>${recipe.calories_stale ? '<p class="muted">Nährwerte veraltet – bitte im Rezept-Panel aktualisieren.</p>' : ""}</section>` : ""}
       <section>
         <h3>Anleitung</h3>
         <div class="instructions">${

@@ -16,7 +16,8 @@ calories = _install_module("custom_components.ha_recipe_manager.calories", "calo
 class FakeConversationServices:
     def __init__(self, text=None, hook=None, error=None, response=None):
         self.text = text if text is not None else json.dumps({
-            "total_kcal": 2350, "assumptions": "Nudeln trocken; Zwiebel ca. 100 g.",
+            "total_kcal": 2350, "total_protein_g": 80.5, "total_fat_g": 20.2, "total_sugar_g": 32.6,
+            "assumptions": "Nudeln trocken; Zwiebel ca. 100 g.",
             "sources": [{"title": "Quelle", "url": "https://example.com/nutrients"}],
         })
         self.hook = hook
@@ -49,7 +50,7 @@ class CalorieResponseTest(unittest.TestCase):
         self.assertLess(len(calories.calorie_error_message("x" * 10000)), 2400)
 
     def test_fenced_json_sources_and_zero(self):
-        value = calories.parse_calorie_response('```json\n{"total_kcal":0,"assumptions":["Wasser"],"sources":[{"url":"javascript:alert(1)"},{"url":"https://example.com/x","title":"X"}]}\n``` [1]')
+        value = calories.parse_calorie_response('```json\n{"total_kcal":0,"total_protein_g":0,"total_fat_g":0,"total_sugar_g":0,"assumptions":["Wasser"],"sources":[{"url":"javascript:alert(1)"},{"url":"https://example.com/x","title":"X"}]}\n``` [1]')
         self.assertEqual(value["total_kcal"], 0)
         self.assertEqual(value["calories_notes"], "Wasser")
         self.assertEqual(value["calories_sources"], [{"title": "X", "url": "https://example.com/x"}])
@@ -60,6 +61,17 @@ class CalorieResponseTest(unittest.TestCase):
                      '{"total_kcal":10}{"total_kcal":20}', '{"total_kcal":Infinity}'):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 calories.parse_calorie_response(text)
+
+    def test_incomplete_or_invalid_nutrients_are_rejected(self):
+        valid = {"total_kcal": 700, "total_protein_g": 10.25, "total_fat_g": 5, "total_sugar_g": 0}
+        self.assertEqual(calories.parse_calorie_response(json.dumps(valid))["total_protein_g"], 10.3)
+        for key in ("total_protein_g", "total_fat_g", "total_sugar_g"):
+            missing = {name: value for name, value in valid.items() if name != key}
+            with self.subTest(key=key, missing=True), self.assertRaisesRegex(ValueError, "vollständigen"):
+                calories.parse_calorie_response(json.dumps(missing))
+            for value in (None, True, -1, "NaN", "Infinity"):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    calories.parse_calorie_response(json.dumps({**valid, key: value}))
 
 
 class CalorieServiceTest(unittest.IsolatedAsyncioTestCase):
@@ -78,6 +90,10 @@ class CalorieServiceTest(unittest.IsolatedAsyncioTestCase):
         hass = self.hass()
         result = await calories.async_estimate_calories(hass, "pasta", context="user-context")
         self.assertEqual(result["total_kcal"], 2350)
+        self.assertEqual(result["total_protein_g"], 80.5)
+        self.assertEqual(result["total_fat_g"], 20.2)
+        self.assertEqual(result["total_sugar_g"], 32.6)
+        self.assertEqual(len(hass.services.calls), 1)
         self.assertEqual(result["calories_source"], "ai")
         self.assertFalse(result["calories_stale"])
         call = hass.services.calls[0]
@@ -92,6 +108,7 @@ class CalorieServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reloaded.get_recipe("pasta")["calories_sources"], result["calories_sources"])
         self.assertEqual(reloaded.get_recipe("pasta")["calories_source"], "ai")
         self.assertFalse(reloaded.get_recipe("pasta")["calories_stale"])
+        self.assertEqual(reloaded.get_recipe("pasta")["total_sugar_g"], 32.6)
 
     async def test_ingredient_edit_during_request_is_kept(self):
         async def edit():
@@ -117,6 +134,24 @@ class CalorieServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["name"], "Neu")
         self.assertEqual(result["servings"], "8")
         self.assertEqual(result["total_kcal"], 2350)
+
+    async def test_manual_protein_confirmation_during_request_is_kept(self):
+        self.recipe = await self.store.async_save_recipe({**self.recipe, "total_kcal": 1500, "total_protein_g": 40})
+        async def edit():
+            await self.store.async_save_recipe({**self.recipe, "nutrition_manual_fields": ["total_protein_g"]})
+        with self.assertRaisesRegex(HomeAssistantError, "geändert"):
+            await calories.async_estimate_calories(self.hass(FakeConversationServices(hook=edit)), "pasta")
+        self.assertEqual(self.store.get_recipe("pasta")["total_kcal"], 1500)
+        self.assertEqual(self.store.get_recipe("pasta")["total_protein_g"], 40)
+
+    async def test_incomplete_estimate_keeps_all_previous_nutrients(self):
+        self.recipe = await self.store.async_save_recipe({**self.recipe, "total_kcal": 1500,
+            "total_protein_g": 40, "total_fat_g": 5, "total_sugar_g": 0})
+        hass = self.hass(FakeConversationServices(text=json.dumps({"total_kcal": 2350, "total_protein_g": 80})))
+        with self.assertRaisesRegex(HomeAssistantError, "vollständigen"):
+            await calories.async_estimate_calories(hass, "pasta")
+        for key in models.NUTRIENT_FIELDS:
+            self.assertEqual(self.store.get_recipe("pasta")[key], self.recipe[key])
 
     async def test_deleted_recipe_not_recreated(self):
         async def delete():

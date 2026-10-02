@@ -204,12 +204,15 @@ async function main() {
     await cardPage.waitForFunction(() => document.querySelector("ha-recipe-guide-card")._loaded);
     assert.match(await cardPage.locator(".card .muted").textContent(), /4 Portionen · ca\. 30 Min\. · Schnell, Vegetarisch/);
     assert.match(await cardPage.locator(".card").textContent(), /ca\. 2[.\s]350 kcal gesamt/);
+    assert.match(await cardPage.locator('[data-nutrient="total_protein_g"]').textContent(), /Protein.*80,5 g/);
+    assert.match(await cardPage.locator('[data-nutrient="total_fat_g"]').textContent(), /Fett.*20,2 g/);
+    assert.match(await cardPage.locator('[data-nutrient="total_sugar_g"]').textContent(), /Zucker.*32,6 g/);
     await cardPage.evaluate(() => {
       const card = document.querySelector("ha-recipe-guide-card");
       card._selectedRecipe().calories_stale = true;
       card._render();
     });
-    assert.match(await cardPage.locator(".card").textContent(), /Schätzung veraltet/);
+    assert.match(await cardPage.locator(".card").textContent(), /Nährwerte veraltet/);
     await cardPage.setViewportSize({ width: 390, height: 844 });
     assert.equal(await cardPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await cardPage.close();

@@ -24,6 +24,49 @@ normalize_recipe = models.normalize_recipe
 
 
 class RecipeModelTest(unittest.TestCase):
+    def test_nutrition_grams_rounding_zero_and_invalid_values(self):
+        recipe = normalize_recipe({"name": "Pasta", "total_kcal": 700,
+            "total_protein_g": "10,25", "total_fat_g": 0, "total_sugar_g": "7.34"})
+        self.assertEqual(recipe["total_protein_g"], 10.3)
+        self.assertEqual(recipe["total_fat_g"], 0)
+        self.assertEqual(recipe["total_sugar_g"], 7.3)
+        for key in ("total_protein_g", "total_fat_g", "total_sugar_g"):
+            for value in (True, -1, float("nan"), float("inf"), "1 g", "abc", 10000000):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    normalize_recipe({"name": "Pasta", key: value})
+
+    def test_old_calorie_recipe_keeps_total_and_unknown_nutrients(self):
+        recipe = normalize_recipe({"name": "Pasta", "total_kcal": 700})
+        legacy = {key: value for key, value in recipe.items() if key not in models.NUTRIENT_FIELDS[1:]}
+        loaded = normalize_recipe(legacy, existing=legacy, preserve_updated_at=True)
+        self.assertEqual(loaded["total_kcal"], 700)
+        self.assertEqual(loaded["calories_revision"], legacy["calories_revision"])
+        for key in models.NUTRIENT_FIELDS[1:]:
+            self.assertIsNone(loaded[key])
+        self.assertFalse(loaded["calories_stale"])
+
+    def test_clear_one_nutrient_preserves_others_and_clear_all_removes_metadata(self):
+        recipe = normalize_recipe({"name": "Pasta", "total_kcal": 700,
+            "total_protein_g": 10, "total_fat_g": 5, "total_sugar_g": 2})
+        cleared = normalize_recipe({"name": "Pasta", "total_protein_g": None}, existing=recipe)
+        self.assertIsNone(cleared["total_protein_g"])
+        self.assertEqual(cleared["total_kcal"], 700)
+        self.assertEqual(cleared["total_fat_g"], 5)
+        empty = normalize_recipe({"name": "Pasta", **{key: None for key in models.NUTRIENT_FIELDS}}, existing=cleared)
+        self.assertEqual(empty["calories_revision"], "")
+        self.assertFalse(empty["calories_stale"])
+
+    def test_editing_one_stale_nutrient_does_not_confirm_other_values(self):
+        recipe = normalize_recipe({"name": "Pasta", "total_kcal": 700,
+            "total_protein_g": 10, "total_fat_g": 5, "total_sugar_g": 2,
+            "ingredients": [{"name": "Nudeln", "quantity": "100", "unit": "g"}]})
+        stale = normalize_recipe({**recipe, "ingredients": [{"name": "Nudeln", "quantity": "200", "unit": "g"}]}, existing=recipe)
+        corrected = normalize_recipe({**stale, "total_protein_g": 20}, existing=stale)
+        self.assertTrue(corrected["calories_stale"])
+        confirmed = normalize_recipe({**corrected, "nutrition_manual_fields": list(models.NUTRIENT_FIELDS)}, existing=corrected)
+        self.assertFalse(confirmed["calories_stale"])
+        self.assertNotEqual(confirmed["calories_revision"], corrected["calories_revision"])
+
     def test_calorie_totals_manual_edits_clear_and_invalid_values(self):
         recipe = normalize_recipe({"name": "Pasta", "total_kcal": "2350"})
         self.assertEqual(recipe["total_kcal"], 2350)

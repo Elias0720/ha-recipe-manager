@@ -164,7 +164,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 async def ws_estimate_calories(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Estimate and save whole-recipe calories, then notify every open view."""
+    """Estimate and save whole-recipe nutrients, then notify every open view."""
     try:
         recipe = await async_estimate_calories(hass, msg["recipe_id"], connection.context(msg))
     except HomeAssistantError as err:

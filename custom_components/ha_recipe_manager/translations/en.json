@@ -14,9 +14,9 @@
   "options": {
     "step": {
       "init": {
-        "title": "Calorie estimates",
-        "description": "Select your existing AI conversation agent. For new free Gemini projects: gemini-3.8-flash, no HA control, Google Search disabled. Calories are then estimated without live research.",
-        "data": {"calorie_agent_id": "Conversation agent for total calories"}
+        "title": "Nutrition estimates",
+        "description": "Select your existing AI conversation agent. For new free Gemini projects: gemini-3.8-flash, no HA control, Google Search disabled. Calories, protein, fat and sugar are then estimated for the whole recipe without live research.",
+        "data": {"calorie_agent_id": "Conversation agent for nutrition totals"}
       }
     }
   },

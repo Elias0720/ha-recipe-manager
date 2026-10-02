@@ -54,6 +54,9 @@ async function main() {
       input("#edit-servings", "4");
       input("#edit-duration", "45");
       input("#edit-calories", "2350");
+      input("#edit-protein", "80.5");
+      input("#edit-fat", "0");
+      input("#edit-sugar", "32.6");
       input("#edit-tags", "Vegetarisch, Schnell, ");
       input("#edit-source", "https://example.com/rezept");
       input('[name="quantity"]', "200");
@@ -62,7 +65,7 @@ async function main() {
       input('[name="note"]', "frisch");
       input("#edit-instructions", "Wasser aufkochen.\nNudeln darin garen. ");
 
-      const selectors = ["#edit-name", "#edit-servings", "#edit-duration", "#edit-calories", "#edit-tags", "#edit-source",
+      const selectors = ["#edit-name", "#edit-servings", "#edit-duration", "#edit-calories", "#edit-protein", "#edit-fat", "#edit-sugar", "#edit-tags", "#edit-source",
         '[name="quantity"]', '[name="unit"]', '[name="name"]', '[name="note"]',
         "#edit-instructions"];
       for (const selector of selectors) {
@@ -129,6 +132,9 @@ async function main() {
       check(saved.ingredients[0].name === "Nudeln", "Saved recipe lost its ingredient");
       check(saved.duration_minutes === "45", "Saved recipe lost its time estimate");
       check(saved.total_kcal === "2350" && saved.calories_manual, "Manual calories were not submitted");
+      check(saved.total_protein_g === "80.5" && saved.total_fat_g === "0" && saved.total_sugar_g === "32.6",
+        "Manual nutrient values or zero were not submitted");
+      check(saved.nutrition_manual_fields.length === 4, "Manual nutrient fields were not tracked");
       check(query(".main").textContent.includes("ca. 45 Min."), "Recipe does not display its time estimate");
       completed.push("A successful save submits the full draft and selects the recipe");
       connection.sendMessagePromise = originalSend;
@@ -163,6 +169,7 @@ async function main() {
       const notes = input('[name="note"]', "Editor bleibt offen");
       notes.focus();
       const estimated = { ...recipe, total_kcal: 2350, calories_source: "ai", calories_stale: false,
+        total_protein_g: 80.5, total_fat_g: 0, total_sugar_g: 32.6,
         calories_notes: '<script>alert("test")</script>',
         calories_sources: [{ title: "Quelle", url: "https://example.com/calories" }, { title: "Unsafe", url: "javascript:alert(1)" }] };
       finishEstimate({ recipe: estimated });
@@ -170,6 +177,9 @@ async function main() {
       check(query('[name="note"]') === notes && notes.value === "Editor bleibt offen" &&
         panel.shadowRoot.activeElement === notes, "Calorie completion replaced the open editor");
       check(query(".calorie-section").textContent.includes("kcal gesamt"), "Total calories were not displayed");
+      check(query('[data-nutrient="total_protein_g"]').textContent.includes("80,5 g"), "Protein total was not displayed");
+      check(query('[data-nutrient="total_fat_g"]').textContent.includes("0 g"), "Known zero fat was displayed as unknown");
+      check(query('[data-nutrient="total_sugar_g"]').textContent.includes("32,6 g"), "Sugar total was not displayed");
       check(!query(".calorie-section script") && !query('.calorie-section a[href^="javascript:"]'), "AI content was not escaped");
       let submitted;
       connection.sendMessagePromise = async (message) => {
@@ -181,6 +191,9 @@ async function main() {
       };
       await panel._saveDraft();
       check(!Object.hasOwn(submitted, "total_kcal"), "An untouched old editor tried to overwrite the new AI total");
+      for (const key of ["total_protein_g", "total_fat_g", "total_sugar_g"]) {
+        check(!Object.hasOwn(submitted, key), "An untouched old editor tried to overwrite a new nutrient total");
+      }
       check(!submitted.calories_manual, "Untouched calories were marked as manually changed");
       check(panel._selectedRecipe().total_kcal === 2350, "Saving the old editor erased the AI total");
       completed.push("Calorie requests prevent duplicate clicks, preserve an open editor, escape AI text and retain newer totals");
@@ -200,8 +213,23 @@ async function main() {
       query('[data-action="edit"]').click();
       query('[data-action="confirm-calories"]').click();
       check(panel._collectDraftFromForm().calories_manual, "Explicit confirmation did not mark the value as manual");
+      check(panel._collectDraftFromForm().nutrition_manual_fields.length === 4, "Confirmation did not cover all nutrient values");
       check(query("#edit-calories").value === "2350", "Confirmation changed the calorie value");
       query('[data-action="close-editor"]').click();
+      query('[data-action="edit"]').click();
+      connection.sendMessagePromise = async (message) => {
+        if (message.type.endsWith("/save")) {
+          submitted = message.recipe;
+          return { recipe: { ...panel._selectedRecipe(), ...message.recipe } };
+        }
+        return originalSend(message);
+      };
+      input("#edit-protein", "42.1");
+      await panel._saveDraft();
+      check(submitted.total_protein_g === "42.1" && submitted.nutrition_manual_fields.join() === "total_protein_g",
+        "A single nutrient correction did not preserve its edit flag");
+      check(!Object.hasOwn(submitted, "total_kcal") && !Object.hasOwn(submitted, "total_fat_g") && !Object.hasOwn(submitted, "total_sugar_g"),
+        "A single nutrient correction tried to overwrite the other totals");
       completed.push("Failed calorie requests retain existing totals and allow retry; stale estimates are visibly marked");
       connection.sendMessagePromise = originalSend;
       return completed;
@@ -320,6 +348,38 @@ async function main() {
       await page.locator('[data-action="close-editor"]').first().click();
       checks.push(`${theme}: selected and hovered recipes/tabs, checked ingredients, buttons, fields, placeholders and text selection meet 4.5:1 contrast; weekdays are removed`);
     }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => {
+      const panel = document.querySelector("ha-recipe-manager-panel");
+      panel._calorieErrors.clear();
+      const recipe = panel._selectedRecipe();
+      recipe.calories_stale = false;
+      recipe.calories_notes = "Ohne Live-Recherche: Beispielwerte für die Vorschau.";
+      recipe.total_protein_g = null;
+      panel._render();
+    });
+    assert.match(await page.locator('[data-nutrient="total_protein_g"]').textContent(), /Noch nicht geschätzt/);
+    assert.match(await page.locator('[data-nutrient="total_fat_g"]').textContent(), /ca\. 0 g/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => {
+      const panel = document.querySelector("ha-recipe-manager-panel");
+      panel._selectedRecipe().total_protein_g = 80.5;
+      panel._render();
+    });
+    if (process.env.HA_RECIPE_QA_DIR) {
+      await page.screenshot({ path: join(process.env.HA_RECIPE_QA_DIR, "nutrition-mobile.png"), fullPage: true });
+    }
+    await page.locator('[data-action="edit"]').click();
+    for (const id of ["edit-calories", "edit-protein", "edit-fat", "edit-sugar"]) {
+      const field = page.locator(`#${id}`);
+      await field.scrollIntoViewIfNeeded();
+      const box = await field.boundingBox();
+      assert.ok(box.x >= 0 && box.x + box.width <= 390, `${id} overflows on mobile`);
+    }
+    if (process.env.HA_RECIPE_QA_DIR) {
+      await page.screenshot({ path: join(process.env.HA_RECIPE_QA_DIR, "nutrition-editor-mobile.png"), fullPage: true });
+    }
+    checks.push("Whole-recipe nutrients distinguish unknown from zero; nutrient display and editor fit on mobile");
     assert.deepEqual(errors, []);
     for (const check of checks) console.log(`PASS: ${check}`);
   } finally {
