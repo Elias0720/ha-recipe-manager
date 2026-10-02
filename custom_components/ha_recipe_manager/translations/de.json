@@ -15,7 +15,7 @@
     "step": {
       "init": {
         "title": "Kalorienschätzung",
-        "description": "Wähle deinen vorhandenen KI-Konversationsagenten. Für Gemini mit kostenloser Google-Suche: gemini-2.5-flash, keine HA-Steuerung, Google-Suche aktiviert.",
+        "description": "Wähle deinen vorhandenen KI-Konversationsagenten. Für neue kostenlose Gemini-Projekte: gemini-3.8-flash, keine HA-Steuerung, Google-Suche ausgeschaltet. Die Kalorien werden dann ohne Live-Recherche geschätzt.",
         "data": {"calorie_agent_id": "Konversationsagent für Gesamtkalorien"}
       }
     }

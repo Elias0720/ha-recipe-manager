@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Kalorienschätzung auch mit einem Konversationsagenten ohne Suchwerkzeug erlauben
+- Einrichtung für neue kostenlose Gemini-Projekte auf gemini-3.8-flash ohne Google-Suche korrigiert
+- Fehlerantwort und Fehlercode des Konversationsagenten im Rezept-Panel anzeigen; bisherige Kalorien bleiben erhalten
+- Lange Fehlermeldungen umbrechen und Google-API-Schlüssel in der Anzeige entfernen
+
 ## 0.3.0
 
 - Gesamtkalorien pro Rezept per vorhandenem KI-Konversationsagenten schaetzen

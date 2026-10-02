@@ -14,13 +14,14 @@ calories = _install_module("custom_components.ha_recipe_manager.calories", "calo
 
 
 class FakeConversationServices:
-    def __init__(self, text=None, hook=None, error=None):
+    def __init__(self, text=None, hook=None, error=None, response=None):
         self.text = text if text is not None else json.dumps({
             "total_kcal": 2350, "assumptions": "Nudeln trocken; Zwiebel ca. 100 g.",
             "sources": [{"title": "Quelle", "url": "https://example.com/nutrients"}],
         })
         self.hook = hook
         self.error = error
+        self.response = response
         self.calls = []
 
     def has_service(self, domain, service):
@@ -32,10 +33,21 @@ class FakeConversationServices:
             await self.hook()
         if self.error:
             raise self.error
+        if self.response is not None:
+            return {"response": self.response}
         return {"response": {"response_type": "action_done", "speech": {"plain": {"speech": self.text}}}}
 
 
 class CalorieResponseTest(unittest.TestCase):
+    def test_error_details_are_bounded_and_google_api_keys_redacted(self):
+        key = "AIza" + "a" * 35
+        message = calories.calorie_error_message(f"API key invalid: {key}", "unknown")
+        self.assertNotIn(key, message)
+        self.assertIn("[API-Schlüssel entfernt]", message)
+        self.assertIn("unknown", message)
+        self.assertIn("Protokolle", message)
+        self.assertLess(len(calories.calorie_error_message("x" * 10000)), 2400)
+
     def test_fenced_json_sources_and_zero(self):
         value = calories.parse_calorie_response('```json\n{"total_kcal":0,"assumptions":["Wasser"],"sources":[{"url":"javascript:alert(1)"},{"url":"https://example.com/x","title":"X"}]}\n``` [1]')
         self.assertEqual(value["total_kcal"], 0)
@@ -140,6 +152,34 @@ class CalorieServiceTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(calories, "CALORIE_TIMEOUT", 0.01), self.assertRaisesRegex(HomeAssistantError, "rechtzeitig"):
             await calories.async_estimate_calories(hass, "pasta")
         self.assertEqual(hass.data[const.DOMAIN][const.DATA_CALORIE_REQUESTS], set())
+
+    async def test_ha_error_response_preserves_provider_message_code_and_old_total(self):
+        self.recipe = await self.store.async_save_recipe({**self.recipe, "total_kcal": 1500})
+        message = "429 RESOURCE_EXHAUSTED: quota exceeded"
+        hass = self.hass(FakeConversationServices(response={
+            "response_type": "error", "data": {"code": "unknown"},
+            "speech": {"plain": {"speech": message}},
+        }))
+        with self.assertRaises(HomeAssistantError) as raised:
+            await calories.async_estimate_calories(hass, "pasta")
+        self.assertIn(message, str(raised.exception))
+        self.assertIn("unknown", str(raised.exception))
+        self.assertEqual(self.store.get_recipe("pasta")["total_kcal"], 1500)
+        self.assertEqual(hass.data[const.DOMAIN][const.DATA_CALORIE_REQUESTS], set())
+        self.assertEqual(len(hass.services.calls), 1)
+
+    async def test_ha_error_response_without_speech_or_data_still_reports_failure(self):
+        for response in ({"response_type": "error"},
+                         {"response_type": "error", "speech": {"plain": {"speech": '{"total_kcal":99}'}}},
+                         ["invalid"]):
+            with self.subTest(response=response), self.assertRaises(HomeAssistantError):
+                await calories.async_estimate_calories(self.hass(FakeConversationServices(response=response)), "pasta")
+            self.assertIsNone(self.store.get_recipe("pasta")["total_kcal"])
+
+    async def test_service_exception_preserves_its_message(self):
+        hass = self.hass(FakeConversationServices(error=HomeAssistantError("403 PERMISSION_DENIED")))
+        with self.assertRaisesRegex(HomeAssistantError, "403 PERMISSION_DENIED"):
+            await calories.async_estimate_calories(hass, "pasta")
 
     async def test_missing_agent_and_empty_recipe_fail_before_call(self):
         hass = self.hass()

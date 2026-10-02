@@ -1022,7 +1022,8 @@ class HaRecipeManagerPanel extends HTMLElement {
           cursor: pointer;
         }
 
-        .calorie-notes {
+        .calorie-notes,
+        .calorie-section .error {
           white-space: pre-wrap;
           overflow-wrap: anywhere;
         }

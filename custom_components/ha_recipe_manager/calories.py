@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
+import re
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -17,6 +18,18 @@ from .shopping import get_store
 CALORIE_TIMEOUT = 120
 
 
+def calorie_error_message(detail: Any = "", code: Any = "") -> str:
+    """Keep HA's provider error useful without exposing a Google API key."""
+    message = "Die KI-Abfrage ist fehlgeschlagen."
+    if isinstance(detail, str) and detail.strip():
+        detail = re.sub(r"AIza[0-9A-Za-z_-]{35}", "[API-Schlüssel entfernt]", detail.strip())
+        message += f" Meldung des Konversationsagenten: {detail[:2000]}"
+    if isinstance(code, str) and code.strip():
+        message += f" (Fehlercode: {code.strip()[:80]})"
+    message = re.sub(r"AIza[0-9A-Za-z_-]{35}", "[API-Schlüssel entfernt]", message)
+    return message + " Details findest du unter Einstellungen → System → Protokolle bei Google/Gemini."
+
+
 def calorie_prompt(recipe: dict[str, Any]) -> str:
     """Give the model amounts, but never ask it to divide by servings."""
     ingredients = [
@@ -25,8 +38,12 @@ def calorie_prompt(recipe: dict[str, Any]) -> str:
     ]
     payload = json.dumps({"ingredients": ingredients, "instructions": recipe["instructions"]}, ensure_ascii=False)
     return (
-        "Schätze die GESAMTKALORIEN des gesamten Rezepts in kcal. Nutze Google-Suche "
-        "für die Kalorienwerte der Zutaten und gib die verwendeten Quellen an. "
+        "Schätze die GESAMTKALORIEN des gesamten Rezepts in kcal. "
+        "Wenn dir ein Suchwerkzeug zur Verfügung steht, nutze es für die Kalorienwerte "
+        "der Zutaten und gib nur die tatsächlich recherchierten Quellen an. "
+        "Ohne Suchwerkzeug schätze anhand üblicher Nährwerte aus deinem Wissen; "
+        "schreibe dann in assumptions 'Ohne Live-Recherche' und gib sources=[] zurück. "
+        "Erfinde keine Quellen, URLs oder durchgeführten Internetabfragen. "
         "Rechne jede aufgeführte Zutat mit ihrer vollständigen Menge ein, auch gleiche "
         "Zutaten in mehreren Zeilen. Nicht durch Portionen teilen, keine Werte pro Portion. "
         "Unterscheide rohe/trockene und gekochte Mengen anhand von Einheit, Notiz und Anleitung. "
@@ -96,13 +113,17 @@ async def async_estimate_calories(hass: HomeAssistant, recipe_id: str, context: 
         except TimeoutError as err:
             raise HomeAssistantError("Die KI hat nicht rechtzeitig geantwortet. Bitte später erneut versuchen.") from err
         except HomeAssistantError as err:
-            raise HomeAssistantError("Die KI-Abfrage ist fehlgeschlagen. Prüfe Gemini, Modell, Google-Suche und das kostenlose Kontingent.") from err
+            raise HomeAssistantError(calorie_error_message(str(err))) from err
         response = result.get("response", {}) if isinstance(result, dict) else {}
-        if not isinstance(response, dict) or response.get("response_type") == "error":
-            raise HomeAssistantError("Die KI-Abfrage ist fehlgeschlagen. Prüfe die Gemini-Einstellungen und das Kontingent.")
+        if not isinstance(response, dict):
+            raise HomeAssistantError("Der Konversationsagent hat keine gültige Antwort geliefert.")
         speech = response.get("speech")
         plain = speech.get("plain") if isinstance(speech, dict) else None
         answer = plain.get("speech") if isinstance(plain, dict) else None
+        if response.get("response_type") == "error":
+            data = response.get("data")
+            code = data.get("code") if isinstance(data, dict) else None
+            raise HomeAssistantError(calorie_error_message(answer, code))
         if not isinstance(answer, str) or not answer.strip():
             raise HomeAssistantError("Die KI-Antwort ist leer. Erhöhe in Gemini die maximalen Antworttokens, z. B. auf 4000.")
         try:

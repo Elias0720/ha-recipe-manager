@@ -15,7 +15,7 @@
     "step": {
       "init": {
         "title": "Calorie estimates",
-        "description": "Select your existing AI conversation agent. For Gemini with free Google Search: gemini-2.5-flash, no HA control, Google Search enabled.",
+        "description": "Select your existing AI conversation agent. For new free Gemini projects: gemini-3.8-flash, no HA control, Google Search disabled. Calories are then estimated without live research.",
         "data": {"calorie_agent_id": "Conversation agent for total calories"}
       }
     }

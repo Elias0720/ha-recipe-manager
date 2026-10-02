@@ -105,16 +105,28 @@ Standard ist `conversation.google_ai_conversation_2`. Unter
 sich ein anderer Konversationsagent auswählen. Ein zusätzlicher API-Schlüssel
 in HA Recipe Manager ist nicht nötig.
 
-Für Gemini mit kostenloser Google-Suche (Stand 2. Oktober 2026):
+Für neue kostenlose Gemini-Projekte (Stand 2. Oktober 2026):
 
 1. In Google AI Studio ein Projekt im kostenlosen Tarif ohne aktive Abrechnung verwenden.
-2. Beim Google-Konversationsagenten die empfohlenen Modelleinstellungen ausschalten und `gemini-2.5-flash` wählen.
-3. HA-Steuerung ausschalten und das Google-Suchwerkzeug aktivieren.
-4. Bei leeren oder abgeschnittenen Antworten die maximalen Antworttokens erhöhen, z. B. auf 4000.
+2. Beim Google-Konversationsagenten die empfohlenen Modelleinstellungen ausschalten und `gemini-3.8-flash` wählen.
+3. HA-Steuerung und das Google-Suchwerkzeug ausschalten.
+4. Den Denkaufwand auf **Low** und die maximalen Antworttokens z. B. auf 4000 setzen.
 
-Die Tarife sind modellabhängig: `gemini-3.1-flash-lite` bietet kostenlose
-Textabfragen, aber keine Google-Suche im kostenlosen API-Tarif. Aktuelle
-Kontingente stehen in der [Google-Preisliste](https://ai.google.dev/gemini-api/docs/pricing).
+Gemini 3.8 Flash unterstützt **Low**, **Medium** und **High**; **Minimal** führt
+zu einem Fehler. Siehe die [Modelldokumentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash).
+
+`gemini-3.8-flash` bietet kostenlose Textabfragen innerhalb des verfügbaren
+Kontingents, aber keine Google-Suche im kostenlosen API-Tarif. Ohne Suchwerkzeug
+schätzt die KI anhand üblicher Nährwerte aus ihrem Wissen und soll dies unter
+den Annahmen als **Ohne Live-Recherche** kennzeichnen; es werden keine Quellen
+angefordert. Mit einem für den gewählten Tarif verfügbaren Suchwerkzeug kann
+sie zusätzlich recherchieren. Aktuelle Kontingente und Suchpreise stehen in
+der [Google-Preisliste](https://ai.google.dev/gemini-api/docs/pricing).
+
+Google beschränkt Gemini-2.5-Modelle auf Nutzer, die sie bereits zuvor verwendet
+haben. Bei neuen Projekten kann `gemini-2.5-flash` daher mit **404 NOT_FOUND**
+abgelehnt werden. Siehe die [Google-Modellübersicht](https://ai.google.dev/gemini-api/docs/models).
+
 Die Zutaten, Mengen, Notizen und die Anleitung werden an den gewählten Anbieter
 übermittelt. Im kostenlosen Google-Tarif können Inhalte zur Produktverbesserung
 verwendet werden.
@@ -129,8 +141,11 @@ durch Leeren des Feldes entfernt werden. Nach Änderungen an Zutaten, Mengen,
 Notizen oder Anleitung wird ein bestehender Wert als veraltet markiert. Ein
 neuer KI-Aufruf oder eine manuelle Bestätigung aktualisiert ihn. Geänderte
 Portionen, Namen, Kategorien und Zeiten machen die Gesamtsumme nicht ungültig.
-Fehlgeschlagene Abfragen behalten den bisherigen Wert. Während einer Abfrage
-geänderte Zutaten oder manuelle Kalorienwerte werden nicht überschrieben.
+Fehlgeschlagene Abfragen behalten den bisherigen Wert. Das Panel zeigt die
+vom Konversationsagenten gelieferte Fehlermeldung und den HA-Fehlercode an.
+Weitere Google-API-Details stehen unter `Einstellungen > System > Protokolle`.
+Während einer Abfrage geänderte Zutaten oder manuelle Kalorienwerte werden
+nicht überschrieben.
 
 ## Dashboard-Karte
 
@@ -139,7 +154,7 @@ Die Integration liefert zusätzlich eine Lovelace-Karte für die Rezeptanleitung
 Füge diese Ressource unter `Einstellungen > Dashboards > Ressourcen` hinzu:
 
 ```yaml
-url: /ha_recipe_manager_static/recipe-guide-card.js?v=0.3.0
+url: /ha_recipe_manager_static/recipe-guide-card.js?v=0.3.1
 type: module
 ```
 

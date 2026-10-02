@@ -185,11 +185,13 @@ async function main() {
       check(panel._selectedRecipe().total_kcal === 2350, "Saving the old editor erased the AI total");
       completed.push("Calorie requests prevent duplicate clicks, preserve an open editor, escape AI text and retain newer totals");
       connection.sendMessagePromise = async (message) => {
-        if (message.type.endsWith("/estimate_calories")) throw new Error("Kontingent erreicht");
+        if (message.type.endsWith("/estimate_calories")) throw new Error('404 NOT_FOUND: Modell nicht verfügbar <script>unsafe()</script>\nFehlercode: unknown');
         return originalSend(message);
       };
       await panel._estimateCalories();
-      check(query(".calorie-section [role=alert]").textContent.includes("Kontingent"), "Calorie failure was not shown");
+      check(query(".calorie-section [role=alert]").textContent.includes("404 NOT_FOUND"), "Provider failure detail was not shown");
+      check(query(".calorie-section [role=alert]").textContent.includes("Fehlercode: unknown"), "Provider error code was not shown");
+      check(!query(".calorie-section [role=alert] script"), "Provider error detail was not escaped");
       check(panel._selectedRecipe().total_kcal === 2350 && !query('[data-action="estimate-calories"]').disabled,
         "Calorie failure lost the saved total or prevented retry");
       panel._selectedRecipe().calories_stale = true;
