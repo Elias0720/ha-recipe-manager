@@ -43,6 +43,10 @@
           name: "Pasta mit Tomatensauce",
           servings: "4",
           duration_minutes: 30,
+          total_kcal: 2350,
+          calories_source: "ai",
+          calories_notes: "Nudeln trocken gewogen; zwei Dosen Tomaten mit je 400 g angenommen.",
+          calories_sources: [{title: "Beispielquelle", url: "https://example.com/calories"}],
           source_url: "https://example.com/pasta",
           tags: ["Schnell", "Vegetarisch"],
           ingredients: [
@@ -88,6 +92,11 @@
           if (message.type.endsWith("/save_ranking")) {
             rankings[message.kind] = [...message.recipe_ids];
             return { rankings: JSON.parse(JSON.stringify(rankings)) };
+          }
+          if (message.type.endsWith("/estimate_calories")) {
+            const recipe = recipes.find((item) => item.id === message.recipe_id);
+            Object.assign(recipe, { total_kcal: 2350, calories_source: "ai", calories_stale: false });
+            return { recipe: JSON.parse(JSON.stringify(recipe)) };
           }
           if (message.type.endsWith("/add_to_shopping_list")) {
             return {

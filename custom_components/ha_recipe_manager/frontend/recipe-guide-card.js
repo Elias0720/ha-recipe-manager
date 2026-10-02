@@ -226,6 +226,9 @@ class HaRecipeGuideCard extends HTMLElement {
             </section>`
           : ""
       }
+      ${recipe.total_kcal !== null && recipe.total_kcal !== undefined
+        ? `<section><h3>Gesamtkalorien</h3><p>ca. ${recipeCardEscape(Number(recipe.total_kcal).toLocaleString("de-AT"))} kcal gesamt</p>
+          ${recipe.calories_stale ? '<p class="muted">Schätzung veraltet – bitte im Rezept-Panel aktualisieren.</p>' : ""}</section>` : ""}
       <section>
         <h3>Anleitung</h3>
         <div class="instructions">${

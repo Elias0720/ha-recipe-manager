@@ -53,6 +53,7 @@ async function main() {
       input("#edit-name", "Pasta mit frischen Kräutern");
       input("#edit-servings", "4");
       input("#edit-duration", "45");
+      input("#edit-calories", "2350");
       input("#edit-tags", "Vegetarisch, Schnell, ");
       input("#edit-source", "https://example.com/rezept");
       input('[name="quantity"]', "200");
@@ -61,7 +62,7 @@ async function main() {
       input('[name="note"]', "frisch");
       input("#edit-instructions", "Wasser aufkochen.\nNudeln darin garen. ");
 
-      const selectors = ["#edit-name", "#edit-servings", "#edit-duration", "#edit-tags", "#edit-source",
+      const selectors = ["#edit-name", "#edit-servings", "#edit-duration", "#edit-calories", "#edit-tags", "#edit-source",
         '[name="quantity"]', '[name="unit"]', '[name="name"]', '[name="note"]',
         "#edit-instructions"];
       for (const selector of selectors) {
@@ -127,6 +128,7 @@ async function main() {
       check(query(".main h2").textContent === saved.name, "Saved recipe was not selected");
       check(saved.ingredients[0].name === "Nudeln", "Saved recipe lost its ingredient");
       check(saved.duration_minutes === "45", "Saved recipe lost its time estimate");
+      check(saved.total_kcal === "2350" && saved.calories_manual, "Manual calories were not submitted");
       check(query(".main").textContent.includes("ca. 45 Min."), "Recipe does not display its time estimate");
       completed.push("A successful save submits the full draft and selects the recipe");
       connection.sendMessagePromise = originalSend;
@@ -141,6 +143,65 @@ async function main() {
       check(query(".recipe-list").textContent.includes("Pasta mit Tomatensauce"), "Recipe list did not refresh");
       check(!query(".recipe-list").textContent.includes("Gemüsecurry"), "Recipe refresh ignored the search filter");
       completed.push("Background refresh updates the filtered list while preserving the search cursor");
+
+      const recipe = panel._selectedRecipe();
+      let finishEstimate;
+      let calls = 0;
+      connection.sendMessagePromise = async (message) => {
+        if (message.type.endsWith("/estimate_calories")) {
+          calls++;
+          check(message.recipe_id === recipe.id, "Wrong recipe was sent for calories");
+          return new Promise((resolve) => { finishEstimate = resolve; });
+        }
+        return originalSend(message);
+      };
+      const pending = panel._estimateCalories();
+      check(query('[data-action="estimate-calories"]').disabled, "Estimate button was not disabled while pending");
+      await panel._estimateCalories();
+      check(calls === 1, "Repeated clicks sent duplicate calorie requests");
+      query('[data-action="edit"]').click();
+      const notes = input('[name="note"]', "Editor bleibt offen");
+      notes.focus();
+      const estimated = { ...recipe, total_kcal: 2350, calories_source: "ai", calories_stale: false,
+        calories_notes: '<script>alert("test")</script>',
+        calories_sources: [{ title: "Quelle", url: "https://example.com/calories" }, { title: "Unsafe", url: "javascript:alert(1)" }] };
+      finishEstimate({ recipe: estimated });
+      await pending;
+      check(query('[name="note"]') === notes && notes.value === "Editor bleibt offen" &&
+        panel.shadowRoot.activeElement === notes, "Calorie completion replaced the open editor");
+      check(query(".calorie-section").textContent.includes("kcal gesamt"), "Total calories were not displayed");
+      check(!query(".calorie-section script") && !query('.calorie-section a[href^="javascript:"]'), "AI content was not escaped");
+      let submitted;
+      connection.sendMessagePromise = async (message) => {
+        if (message.type.endsWith("/save")) {
+          submitted = message.recipe;
+          return { recipe: { ...estimated, ...message.recipe } };
+        }
+        return originalSend(message);
+      };
+      await panel._saveDraft();
+      check(!Object.hasOwn(submitted, "total_kcal"), "An untouched old editor tried to overwrite the new AI total");
+      check(!submitted.calories_manual, "Untouched calories were marked as manually changed");
+      check(panel._selectedRecipe().total_kcal === 2350, "Saving the old editor erased the AI total");
+      completed.push("Calorie requests prevent duplicate clicks, preserve an open editor, escape AI text and retain newer totals");
+      connection.sendMessagePromise = async (message) => {
+        if (message.type.endsWith("/estimate_calories")) throw new Error("Kontingent erreicht");
+        return originalSend(message);
+      };
+      await panel._estimateCalories();
+      check(query(".calorie-section [role=alert]").textContent.includes("Kontingent"), "Calorie failure was not shown");
+      check(panel._selectedRecipe().total_kcal === 2350 && !query('[data-action="estimate-calories"]').disabled,
+        "Calorie failure lost the saved total or prevented retry");
+      panel._selectedRecipe().calories_stale = true;
+      panel._render();
+      check(query(".calorie-section").textContent.includes("veraltet"), "Stale estimate was not marked");
+      query('[data-action="edit"]').click();
+      query('[data-action="confirm-calories"]').click();
+      check(panel._collectDraftFromForm().calories_manual, "Explicit confirmation did not mark the value as manual");
+      check(query("#edit-calories").value === "2350", "Confirmation changed the calorie value");
+      query('[data-action="close-editor"]').click();
+      completed.push("Failed calorie requests retain existing totals and allow retry; stale estimates are visibly marked");
+      connection.sendMessagePromise = originalSend;
       return completed;
     });
 

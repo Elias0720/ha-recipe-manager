@@ -17,6 +17,7 @@ from .const import (
     EVENT_SHOPPING_LIST_FILLED,
 )
 from .shopping import async_add_missing_to_shopping_list, get_store
+from .calories import async_estimate_calories
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list"})
@@ -152,4 +153,22 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save_recipe)
     websocket_api.async_register_command(hass, ws_delete_recipe)
     websocket_api.async_register_command(hass, ws_add_to_shopping_list)
+    websocket_api.async_register_command(hass, ws_estimate_calories)
     domain_data[DATA_WEBSOCKET_REGISTERED] = True
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/estimate_calories", vol.Required("recipe_id"): str}
+)
+@websocket_api.async_response
+async def ws_estimate_calories(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Estimate and save whole-recipe calories, then notify every open view."""
+    try:
+        recipe = await async_estimate_calories(hass, msg["recipe_id"], connection.context(msg))
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "calories_failed", str(err))
+        return
+    hass.bus.async_fire(EVENT_RECIPES_UPDATED, {"action": "calories", "recipe_id": recipe["id"]})
+    connection.send_result(msg["id"], {"recipe": recipe})

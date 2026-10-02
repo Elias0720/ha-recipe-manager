@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Gesamtkalorien pro Rezept per vorhandenem KI-Konversationsagenten schaetzen
+- Standardagent: conversation.google_ai_conversation_2; in den Integrationseinstellungen aenderbar
+- Kaloriensumme, Annahmen und Quellen lokal speichern; Gesamtkalorien manuell korrigieren oder entfernen
+- Veraltete Werte nach Zutaten-, Mengen- oder Anleitungsaenderungen kennzeichnen
+- Ergebnisse laufender Abfragen ueberschreiben keine neueren Zutaten oder manuellen Kalorienwerte
+- Kaloriensumme auch auf der Dashboard-Karte anzeigen
+
 ## 0.2.0
 
 - Ungefaehren Zeitaufwand in Minuten pro Rezept eintragen und anzeigen

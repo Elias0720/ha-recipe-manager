@@ -203,8 +203,17 @@ async function main() {
     await cardPage.goto("http://card.test/");
     await cardPage.waitForFunction(() => document.querySelector("ha-recipe-guide-card")._loaded);
     assert.match(await cardPage.locator(".card .muted").textContent(), /4 Portionen · ca\. 30 Min\. · Schnell, Vegetarisch/);
+    assert.match(await cardPage.locator(".card").textContent(), /ca\. 2[.\s]350 kcal gesamt/);
+    await cardPage.evaluate(() => {
+      const card = document.querySelector("ha-recipe-guide-card");
+      card._selectedRecipe().calories_stale = true;
+      card._render();
+    });
+    assert.match(await cardPage.locator(".card").textContent(), /Schätzung veraltet/);
+    await cardPage.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await cardPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await cardPage.close();
-    console.log("PASS: Dashboard recipe card displays the approximate time alongside servings and categories");
+    console.log("PASS: Dashboard card shows time, whole-recipe calories and stale estimates, and fits on mobile");
   } finally {
     await browser.close();
   }

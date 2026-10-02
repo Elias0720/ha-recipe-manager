@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from asyncio import Lock
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
-from .models import RANKING_KINDS, Recipe, normalize_rankings, normalize_recipe, sort_recipes
+from .calorie_values import calorie_basis
+from .models import RANKING_KINDS, Recipe, normalize_rankings, normalize_recipe, sort_recipes, utc_timestamp
 
 
 class RecipeStore:
@@ -66,6 +68,25 @@ class RecipeStore:
             recipes = {key: recipe for key, recipe in self._recipes.items() if key != recipe_id}
             await self._async_save(recipes, self._rankings)
             return True
+
+    async def async_save_calorie_estimate(self, snapshot: Recipe, estimate: dict[str, Any]) -> Recipe:
+        """Apply an estimate atomically without overwriting newer edits."""
+        async with self._write_lock:
+            current = self._recipes.get(snapshot["id"])
+            if current is None:
+                raise ValueError("Das Rezept wurde während der Schätzung gelöscht.")
+            if calorie_basis(current) != calorie_basis(snapshot) or any(
+                current.get(key) != snapshot.get(key)
+                for key in ("total_kcal", "calories_source", "calories_basis", "calories_revision")
+            ):
+                raise ValueError("Das Rezept wurde während der Schätzung geändert. Bitte erneut schätzen.")
+            timestamp = utc_timestamp()
+            recipe = {**current, **estimate, "calories_source": "ai",
+                      "calories_basis": calorie_basis(current), "calories_stale": False,
+                      "calories_revision": uuid4().hex,
+                      "calories_updated_at": timestamp, "updated_at": timestamp}
+            await self._async_save({**self._recipes, recipe["id"]: recipe}, self._rankings)
+            return recipe
 
     async def async_save_ranking(self, kind: str, recipe_ids: list[str]) -> dict[str, list[str]]:
         """Save one complete order without replacing the other ranking."""

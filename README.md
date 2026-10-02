@@ -10,6 +10,7 @@ HA Recipe Manager ist eine Home-Assistant-Custom-Integration für Kochrezepte, Z
 - Gleiche offene Zutaten zusammenführen: `200g Karotten` + `300 g Karotten` = `500 g Karotten`, `Zwiebel` + `Zwiebel` = `2x Zwiebel`
 - Lesbare Auswahl und Eingabefelder im hellen und dunklen Home-Assistant-Theme
 - Ungefähren Zeitaufwand in Minuten pro Rezept speichern und anzeigen
+- Gesamtkalorien pro Rezept mit einem vorhandenen KI-Konversationsagenten schätzen und lokal speichern
 - Eigener Ranking-Tab: Rezepte unabhängig nach Geschmack und Kochaufwand sortieren
 - Diagramm aus beiden Ranglisten mit linearer Trendlinie
 - Eigenes Sidebar-Panel unter `/recipes`
@@ -91,6 +92,46 @@ links, guter Geschmack oben. Die Zeitangabe bleibt unabhängig vom Aufwandsranki
 Ab zwei Rezepten erscheint eine lineare Trendlinie. Ein Klick auf einen Rezeptpunkt
 öffnet das Rezept; unter **Alle Rezeptwerte** stehen die Werte als Tabelle.
 
+## Gesamtkalorien mit Gemini
+
+Die Schaltfläche **Gesamtkalorien schätzen** wertet alle Zutaten des gespeicherten
+Rezepts aus. Die Summe wird **nicht durch die Portionen geteilt**. Einkaufs-Häkchen
+haben keinen Einfluss. Ein Aufruf erfolgt nur beim Klicken; das Öffnen eines
+Rezepts löst keine KI-Abfrage aus.
+
+Voraussetzung ist ein vorhandener Home-Assistant-Konversationsagent. Der
+Standard ist `conversation.google_ai_conversation_2`. Unter
+`Einstellungen > Geräte & Dienste > HA Recipe Manager > Konfigurieren` lässt
+sich ein anderer Konversationsagent auswählen. Ein zusätzlicher API-Schlüssel
+in HA Recipe Manager ist nicht nötig.
+
+Für Gemini mit kostenloser Google-Suche (Stand 2. Oktober 2026):
+
+1. In Google AI Studio ein Projekt im kostenlosen Tarif ohne aktive Abrechnung verwenden.
+2. Beim Google-Konversationsagenten die empfohlenen Modelleinstellungen ausschalten und `gemini-2.5-flash` wählen.
+3. HA-Steuerung ausschalten und das Google-Suchwerkzeug aktivieren.
+4. Bei leeren oder abgeschnittenen Antworten die maximalen Antworttokens erhöhen, z. B. auf 4000.
+
+Die Tarife sind modellabhängig: `gemini-3.1-flash-lite` bietet kostenlose
+Textabfragen, aber keine Google-Suche im kostenlosen API-Tarif. Aktuelle
+Kontingente stehen in der [Google-Preisliste](https://ai.google.dev/gemini-api/docs/pricing).
+Die Zutaten, Mengen, Notizen und die Anleitung werden an den gewählten Anbieter
+übermittelt. Im kostenlosen Google-Tarif können Inhalte zur Produktverbesserung
+verwendet werden.
+
+Gesamtkalorien, Annahmen und die von der KI angegebenen Quellen werden lokal
+gespeichert und sind anschließend ohne Internet lesbar. Die Werte bleiben
+ungefähre Schätzungen, besonders bei fehlenden Mengen, Stückgrößen oder
+unklarem Garzustand. Quellenlinks stammen aus der KI-Antwort.
+
+Im Rezept-Editor kann die Summe unter **Gesamtkalorien (ca. kcal)** korrigiert oder
+durch Leeren des Feldes entfernt werden. Nach Änderungen an Zutaten, Mengen,
+Notizen oder Anleitung wird ein bestehender Wert als veraltet markiert. Ein
+neuer KI-Aufruf oder eine manuelle Bestätigung aktualisiert ihn. Geänderte
+Portionen, Namen, Kategorien und Zeiten machen die Gesamtsumme nicht ungültig.
+Fehlgeschlagene Abfragen behalten den bisherigen Wert. Während einer Abfrage
+geänderte Zutaten oder manuelle Kalorienwerte werden nicht überschrieben.
+
 ## Dashboard-Karte
 
 Die Integration liefert zusätzlich eine Lovelace-Karte für die Rezeptanleitung aus.
@@ -98,12 +139,12 @@ Die Integration liefert zusätzlich eine Lovelace-Karte für die Rezeptanleitung
 Füge diese Ressource unter `Einstellungen > Dashboards > Ressourcen` hinzu:
 
 ```yaml
-url: /ha_recipe_manager_static/recipe-guide-card.js?v=0.2.0
+url: /ha_recipe_manager_static/recipe-guide-card.js?v=0.3.0
 type: module
 ```
 
 Bei einer bereits eingebundenen Dashboard-Karte die Ressourcen-URL auf diese
-Version aktualisieren, damit auch die neue Zeitangabe geladen wird.
+Version aktualisieren, damit auch die Gesamtkalorien geladen werden.
 
 Beispielkarte mit Rezeptauswahl:
 

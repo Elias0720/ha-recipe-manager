@@ -1,6 +1,7 @@
 {
   "domain": "ha_recipe_manager",
   "name": "HA Recipe Manager",
+  "after_dependencies": ["conversation"],
   "codeowners": ["@Elias0720"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "panel_custom", "shopping_list"],
@@ -9,5 +10,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Elias0720/ha-recipe-manager/issues",
   "single_config_entry": true,
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

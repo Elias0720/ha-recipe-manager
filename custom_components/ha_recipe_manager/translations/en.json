@@ -11,6 +11,15 @@
       "single_instance_allowed": "Only one HA Recipe Manager instance is allowed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Calorie estimates",
+        "description": "Select your existing AI conversation agent. For Gemini with free Google Search: gemini-2.5-flash, no HA control, Google Search enabled.",
+        "data": {"calorie_agent_id": "Conversation agent for total calories"}
+      }
+    }
+  },
   "services": {
     "add_missing_to_shopping_list": {
       "name": "Add missing ingredients to shopping list",

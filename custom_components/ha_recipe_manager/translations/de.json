@@ -11,6 +11,15 @@
       "single_instance_allowed": "Es ist nur eine HA-Recipe-Manager-Instanz erlaubt."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kalorienschätzung",
+        "description": "Wähle deinen vorhandenen KI-Konversationsagenten. Für Gemini mit kostenloser Google-Suche: gemini-2.5-flash, keine HA-Steuerung, Google-Suche aktiviert.",
+        "data": {"calorie_agent_id": "Konversationsagent für Gesamtkalorien"}
+      }
+    }
+  },
   "services": {
     "add_missing_to_shopping_list": {
       "name": "Fehlende Zutaten zur Einkaufsliste hinzufügen",

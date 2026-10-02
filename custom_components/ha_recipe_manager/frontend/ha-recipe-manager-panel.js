@@ -13,6 +13,7 @@ const emptyRecipe = () => ({
   name: "",
   servings: "",
   duration_minutes: null,
+  total_kcal: null,
   source_url: "",
   tags: [],
   ingredients: [emptyIngredient()],
@@ -29,6 +30,8 @@ const escapeHtml = (value) =>
 
 const cloneRecipe = (recipe) => JSON.parse(JSON.stringify(recipe || emptyRecipe()));
 const durationLabel = (recipe) => recipe.duration_minutes ? `ca. ${recipe.duration_minutes} Min.` : "";
+const calorieLabel = (recipe) => recipe.total_kcal !== null && recipe.total_kcal !== undefined
+  ? `ca. ${Number(recipe.total_kcal).toLocaleString("de-AT")} kcal gesamt` : "";
 
 const ingredientLabel = (ingredient) => {
   const prefix = [ingredient.quantity, ingredient.unit].filter(Boolean).join(" ");
@@ -69,6 +72,9 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._error = "";
     this._draft = undefined;
     this._editorError = "";
+    this._caloriesPending = new Set();
+    this._calorieErrors = new Map();
+    this._caloriesEdited = false;
     this._unsubscribeRecipes = undefined;
     this._subscriptionPending = false;
 
@@ -385,9 +391,16 @@ class HaRecipeManagerPanel extends HTMLElement {
       this._render();
       return;
     }
+    if (recipe.total_kcal !== undefined && recipe.total_kcal !== null && !/^\d{1,8}$/.test(String(recipe.total_kcal))) {
+      this._editorError = "Bitte gib die Gesamtkalorien als ganze Zahl ab 0 ein.";
+      this._render();
+      return;
+    }
 
     try {
-      const response = await this._api("save", { recipe });
+      const payload = { ...recipe };
+      if (payload.id && !this._caloriesEdited) delete payload.total_kcal;
+      const response = await this._api("save", { recipe: payload });
       const saved = response.recipe;
       this._recipes = [...this._recipes.filter((item) => item.id !== saved.id), saved].sort(
         (a, b) => a.name.localeCompare(b.name)
@@ -468,6 +481,26 @@ class HaRecipeManagerPanel extends HTMLElement {
     this._render({ updateEditor: false });
   }
 
+  async _estimateCalories() {
+    const recipe = this._selectedRecipe();
+    if (!recipe || this._caloriesPending.has(recipe.id)) return;
+    const id = recipe.id;
+    this._caloriesPending.add(id);
+    this._calorieErrors.delete(id);
+    this._render({ updateEditor: false });
+    try {
+      const response = await this._api("estimate_calories", { recipe_id: id });
+      const saved = response.recipe;
+      this._recipes = this._recipes.map((item) => item.id === saved.id ? saved : item);
+      if (this._selectedId === id) this._message = "Gesamtkalorien geschätzt und gespeichert.";
+    } catch (err) {
+      this._calorieErrors.set(id, err?.message || "Die Kalorienschätzung ist fehlgeschlagen.");
+    } finally {
+      this._caloriesPending.delete(id);
+      this._render({ updateEditor: false });
+    }
+  }
+
   _collectDraftFromForm() {
     if (!this._draft) {
       return undefined;
@@ -484,11 +517,13 @@ class HaRecipeManagerPanel extends HTMLElement {
       })
     );
 
-    return {
+    const draft = {
       ...this._draft,
       name: value("#edit-name"),
       servings: value("#edit-servings"),
       duration_minutes: value("#edit-duration") || null,
+      total_kcal: value("#edit-calories") || null,
+      calories_manual: this._caloriesEdited,
       source_url: value("#edit-source"),
       tags: value("#edit-tags")
         .split(",")
@@ -497,6 +532,7 @@ class HaRecipeManagerPanel extends HTMLElement {
       ingredients,
       instructions: this.shadowRoot.querySelector("#edit-instructions")?.value.trim() || "",
     };
+    return draft;
   }
 
   _syncDraftFromForm() {
@@ -547,6 +583,7 @@ class HaRecipeManagerPanel extends HTMLElement {
 
     if (action === "new") {
       this._draft = emptyRecipe();
+      this._caloriesEdited = false;
       this._editorError = "";
       this._render();
       return;
@@ -554,6 +591,7 @@ class HaRecipeManagerPanel extends HTMLElement {
 
     if (action === "edit") {
       this._draft = cloneRecipe(this._selectedRecipe());
+      this._caloriesEdited = false;
       this._editorError = "";
       this._render();
       return;
@@ -568,6 +606,14 @@ class HaRecipeManagerPanel extends HTMLElement {
 
     if (action === "save") {
       this._saveDraft();
+      return;
+    }
+
+    if (action === "confirm-calories") {
+      this._syncDraftFromForm();
+      this._caloriesEdited = true;
+      this._draft.calories_stale = false;
+      this._render();
       return;
     }
 
@@ -603,6 +649,11 @@ class HaRecipeManagerPanel extends HTMLElement {
       return;
     }
 
+    if (action === "estimate-calories") {
+      this._estimateCalories();
+      return;
+    }
+
     if (action === "view") {
       this._view = target.dataset.view;
       this._render();
@@ -612,6 +663,7 @@ class HaRecipeManagerPanel extends HTMLElement {
   }
 
   _handleInput(event) {
+    if (event.target?.id === "edit-calories") this._caloriesEdited = true;
     if (event.target?.dataset?.action === "search") {
       this._query = event.target.value;
       const recipeList = this.shadowRoot.querySelector(".recipe-list");
@@ -956,6 +1008,23 @@ class HaRecipeManagerPanel extends HTMLElement {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
+        }
+
+        .calorie-section p {
+          margin: 8px 0;
+        }
+
+        .calorie-section details {
+          margin-top: 12px;
+        }
+
+        .calorie-section summary {
+          cursor: pointer;
+        }
+
+        .calorie-notes {
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
         }
 
         .stat,
@@ -1317,6 +1386,7 @@ class HaRecipeManagerPanel extends HTMLElement {
           <div class="stat"><strong>${missingCount}</strong><span class="muted">fehlen</span></div>
         </div>
 
+        ${this._renderCalories(recipe)}
         ${this._view === "prep" ? this._renderIngredients(recipe, missingCount) : this._renderGuide(recipe)}
       </div>
     `;
@@ -1352,6 +1422,33 @@ class HaRecipeManagerPanel extends HTMLElement {
         </div>
       </div>
     `;
+  }
+
+  _renderCalories(recipe) {
+    const busy = this._caloriesPending.has(recipe.id);
+    const error = this._calorieErrors.get(recipe.id);
+    const sources = (recipe.calories_sources || []).filter((source) => safeExternalUrl(source.url));
+    return `
+      <div class="section calorie-section" aria-busy="${busy}">
+        <div class="status-row">
+          <div>
+            <h3>Gesamtkalorien</h3>
+            <p><strong>${escapeHtml(calorieLabel(recipe) || "Noch nicht geschätzt")}</strong></p>
+            ${calorieLabel(recipe) ? `<p class="muted">${recipe.calories_source === "ai" ? "KI-Schätzung" : "Manuell eingetragen"}</p>` : ""}
+          </div>
+          <button data-action="estimate-calories" ${busy || !recipe.ingredients.length ? "disabled" : ""}>
+            <ha-icon icon="mdi:fire"></ha-icon>${busy ? "Wird geschätzt …" : "Gesamtkalorien schätzen"}
+          </button>
+        </div>
+        ${busy ? '<p class="muted" role="status">Die KI prüft die Zutaten und Mengen. Das kann einen Moment dauern.</p>' : ""}
+        ${recipe.calories_stale ? '<p class="notice" role="status">Die Schätzung ist veraltet: Zutaten, Mengen oder Anleitung wurden geändert. Bitte erneut schätzen oder den Wert im Editor bestätigen.</p>' : ""}
+        ${error ? `<p class="notice error" role="alert">${escapeHtml(error)}</p>` : ""}
+        ${recipe.calories_notes || sources.length ? `<details>
+          <summary>Annahmen und Quellen</summary>
+          ${recipe.calories_notes ? `<p class="calorie-notes">${escapeHtml(recipe.calories_notes)}</p>` : ""}
+          ${sources.length ? `<ul>${sources.map((source) => `<li><a href="${escapeHtml(safeExternalUrl(source.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title || source.url)}</a></li>`).join("")}</ul>` : ""}
+        </details>` : ""}
+      </div>`;
   }
 
   _renderGuide(recipe) {
@@ -1397,6 +1494,13 @@ class HaRecipeManagerPanel extends HTMLElement {
             <div class="field">
               <label for="edit-duration">Zeitaufwand (ca. Minuten)</label>
               <input id="edit-duration" type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(recipe.duration_minutes ?? "")}" placeholder="z. B. 30">
+            </div>
+            <div class="field">
+              <label for="edit-calories">Gesamtkalorien (ca. kcal)</label>
+              <input id="edit-calories" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${escapeHtml(recipe.total_kcal ?? "")}" placeholder="Optional, gesamtes Rezept">
+              <span class="muted">Eintragen oder korrigieren; leer lassen, um den Wert zu entfernen.</span>
+              ${recipe.calories_stale && recipe.total_kcal !== null && recipe.total_kcal !== undefined
+                ? '<button data-action="confirm-calories">Wert beim Speichern bestätigen</button>' : ""}
             </div>
           </div>
           <div class="form-grid">

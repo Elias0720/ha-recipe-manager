@@ -15,9 +15,12 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    CONF_CALORIE_AGENT,
+    DATA_CALORIE_AGENT,
     DATA_FRONTEND_REGISTERED,
     DATA_STORE,
     DOMAIN,
+    DEFAULT_CALORIE_AGENT,
     EVENT_SHOPPING_LIST_FILLED,
     FRONTEND_BASE,
     PANEL_ICON,
@@ -80,9 +83,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = RecipeStore(hass)
     await store.async_load()
     hass.data.setdefault(DOMAIN, {})[DATA_STORE] = store
+    await _async_update_options(hass, entry)
+    entry.async_on_unload(entry.add_update_listener(_async_update_options))
 
     await _async_register_panel(hass)
     return True
+
+
+async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update the chosen agent without reloading recipes or pending requests."""
+    hass.data.setdefault(DOMAIN, {})[DATA_CALORIE_AGENT] = entry.options.get(
+        CONF_CALORIE_AGENT, DEFAULT_CALORIE_AGENT
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

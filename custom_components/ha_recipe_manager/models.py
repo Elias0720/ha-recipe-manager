@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from .calorie_values import calorie_basis, calorie_sources, total_calories
+
 Recipe = dict[str, Any]
 Ingredient = dict[str, str]
 RANKING_KINDS = ("taste", "effort")
@@ -94,7 +96,7 @@ def normalize_recipe(
     if duration and (not re.fullmatch(r"\d+", duration) or int(duration) < 1):
         raise ValueError("Time required must be a positive whole number of minutes.")
 
-    return {
+    recipe = {
         "id": recipe_id,
         "name": name,
         "servings": clean_text(raw.get("servings")),
@@ -112,6 +114,28 @@ def normalize_recipe(
             else timestamp
         ),
     }
+    previous = existing or {}
+    calories = total_calories(raw.get("total_kcal", previous.get("total_kcal")))
+    recipe["total_kcal"] = calories
+    if calories is None:
+        recipe.update(calories_source=None, calories_basis="", calories_notes="",
+                      calories_sources=[], calories_updated_at="", calories_revision="", calories_stale=False)
+    elif calories != previous.get("total_kcal") or raw.get("calories_manual") is True:
+        recipe.update(calories_source="manual", calories_basis=calorie_basis(recipe),
+                      calories_notes="", calories_sources=[], calories_updated_at=timestamp,
+                      calories_revision=uuid4().hex, calories_stale=False)
+    else:
+        basis = clean_text(previous.get("calories_basis"))
+        recipe.update(
+            calories_source="ai" if previous.get("calories_source") == "ai" else "manual",
+            calories_basis=basis,
+            calories_notes=clean_text(previous.get("calories_notes"))[:4000],
+            calories_sources=calorie_sources(previous.get("calories_sources")),
+            calories_updated_at=clean_text(previous.get("calories_updated_at")),
+            calories_revision=clean_text(previous.get("calories_revision")),
+            calories_stale=basis != calorie_basis(recipe),
+        )
+    return recipe
 
 
 def sort_recipes(recipes: list[Recipe]) -> list[Recipe]:
